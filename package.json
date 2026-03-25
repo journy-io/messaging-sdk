@@ -1,0 +1,28 @@
+{
+  "name": "@journyio/messaging-sdk",
+  "version": "1.0.0",
+  "description": "Journy In-App Messaging Library",
+  "main": "dist/journy-messages.js",
+  "module": "dist/journy-messages.esm.js",
+  "types": "dist/index.d.ts",
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  },
+  "dependencies": {
+    "@segment/analytics-next": "^1.81.1",
+    "dompurify": "^3.0.0"
+  },
+  "keywords": [
+    "journy",
+    "messaging",
+    "in-app",
+    "notifications"
+  ],
+  "author": "Journy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/journy-io/messaging-sdk.git"
+  }
+}
