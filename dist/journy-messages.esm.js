@@ -326,6 +326,22 @@ class MessagingStore {
     }
 }
 
+function getDebugFlags() {
+    if (typeof window === 'undefined')
+        return {};
+    const flag = window.__JOURNY_DEBUG__;
+    if (flag === true)
+        return { mockMessages: true, settings: true };
+    if (flag && typeof flag === 'object')
+        return flag;
+    return {};
+}
+function isDebugMockMessages() {
+    return getDebugFlags().mockMessages === true;
+}
+function isDebugSettings() {
+    return getDebugFlags().settings === true;
+}
 function createRootElement(id) {
     let element = document.getElementById(id);
     if (!element) {
@@ -2307,7 +2323,7 @@ const MessageWidget = ({ store, onClose, onCloseWidget, onLinkClick, onToggleExp
                     allMessagesToShow.length,
                     " messages)"))))),
             React.createElement("div", { className: "journy-message-widget-controls" },
-                !isCollapsed && (React.createElement("button", { className: "journy-message-widget-settings-btn", onClick: (e) => {
+                isDebugSettings() && !isCollapsed && (React.createElement("button", { className: "journy-message-widget-settings-btn", onClick: (e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setIsSettingsOpen(true);
@@ -2328,7 +2344,7 @@ const MessageWidget = ({ store, onClose, onCloseWidget, onLinkClick, onToggleExp
                     }, onMouseDown: (e) => {
                         e.stopPropagation();
                     }, title: "Close widget", "aria-label": "Close" }, "\u00D7")),
-                !isCollapsed && isListMode === false && allMessagesToShow.length > 1 && (React.createElement(React.Fragment, null,
+                !isCollapsed && !isListMode && allMessagesToShow.length > 1 && (React.createElement(React.Fragment, null,
                     React.createElement("button", { className: "journy-message-widget-nav", onClick: (e) => {
                             e.stopPropagation();
                             e.preventDefault();
@@ -2354,7 +2370,7 @@ const MessageWidget = ({ store, onClose, onCloseWidget, onLinkClick, onToggleExp
             React.createElement("div", { className: "journy-message-widget-content journy-message-widget-empty" },
                 React.createElement("p", null, "No unread messages")),
             isListMode && React.createElement(ResizeHandle, { onMouseDown: handleResizeStart }))),
-        !isCollapsed && (React.createElement(SettingsPanel, { isOpen: isSettingsOpen, onClose: () => setIsSettingsOpen(false), settings: settings, onSettingsChange: handleSettingsChange, configInfo: configInfo })),
+        isDebugSettings() && !isCollapsed && (React.createElement(SettingsPanel, { isOpen: isSettingsOpen, onClose: () => setIsSettingsOpen(false), settings: settings, onSettingsChange: handleSettingsChange, configInfo: configInfo })),
         modalMessage && (React.createElement(MessagePopup, { message: modalMessage, onClose: () => setModalMessage(null), onLinkClick: onLinkClick }))));
 };
 
@@ -2508,11 +2524,47 @@ class JournyMessaging {
             return;
         // Load existing messages
         await this.loadMessages();
+        // In debug mode, inject mock messages if none were loaded so the widget shows instantly
+        if (isDebugMockMessages() && this.messageQueue.getActiveCount() === 0) {
+            this.injectDebugMessages();
+        }
         // Set up polling or WebSocket connection
         this.startPolling();
         // Initialize UI
         this.initializeUI();
         this.initialized = true;
+    }
+    injectDebugMessages() {
+        const now = new Date().toISOString();
+        const mockMessages = [
+            {
+                id: 'debug-msg-1',
+                appId: 'debug',
+                status: 'sent',
+                scope: this.config.entityType,
+                message: '<h3>Welcome!</h3><p>This is a <strong>debug preview</strong> message. It only appears when <code>window.__JOURNY_DEBUG__</code> is enabled.</p>',
+                received: false,
+                expired: false,
+                createdAt: now,
+            },
+            {
+                id: 'debug-msg-2',
+                appId: 'debug',
+                status: 'sent',
+                scope: this.config.entityType,
+                message: '<h3>Second Message</h3><p>Use this to test <a href="https://example.com">links</a>, navigation, and layout.</p>',
+                received: true,
+                expired: false,
+                createdAt: now,
+            },
+        ];
+        this.messageQueue.addMessages(mockMessages);
+        this.store.setState({
+            messages: this.messageQueue.getAllMessages(),
+            widgetVisible: true,
+            isCollapsed: false,
+        });
+        this.displayNextMessage();
     }
     async loadMessages() {
         try {
