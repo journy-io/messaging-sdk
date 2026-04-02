@@ -52,7 +52,13 @@ npm install @journyio/messaging-sdk
 ```
 
 ```javascript
+import React from 'react';
+import ReactDOM from 'react-dom';
 import { JournyMessaging } from '@journyio/messaging-sdk';
+
+// Make React available globally for the SDK's internal rendering
+window.React = React;
+window.ReactDOM = ReactDOM;
 
 const messaging = new JournyMessaging({
   writeKey: 'your-write-key',
@@ -73,6 +79,8 @@ const messaging = new JournyMessages({
 });
 ```
 
+> **Note**: The SDK renders its widget using `window.React` and `window.ReactDOM`. In a bundled React app these are not on `window` by default — you must assign them before creating a `JournyMessaging` instance. When using script tags, the UMD builds set these globals automatically.
+
 ## Configuration
 
 ### Basic Configuration
@@ -85,6 +93,9 @@ const messaging = new JournyMessaging({
   entityType: 'user',                 // Required: 'user' or 'account'
   apiEndpoint: 'https://jtm.journy.io', // Optional: API base URL
   pollingInterval: 30000,            // Optional: Polling interval in ms (default: 30000)
+  displayMode: 'widget',            // Optional: 'widget' (floating) or 'list' (inline)
+  isCollapsed: false,                // Optional: Start collapsed or expanded
+  renderTarget: 'self',             // Optional: 'self', 'parent', or 'top'
 });
 ```
 
@@ -98,6 +109,10 @@ const messaging = new JournyMessaging({
 | `entityType` | `'user' \| 'account'` | Yes | - | Type of entity to fetch messages for |
 | `apiEndpoint` | `string` | No | `'https://jtm.journy.io'` | API base URL |
 | `pollingInterval` | `number` | No | `30000` | Interval in milliseconds to poll for new messages |
+| `displayMode` | `'widget' \| 'list'` | No | `'widget'` | Display as floating widget or inline list |
+| `isCollapsed` | `boolean` | No | `false` | Whether the widget starts collapsed |
+| `styles` | `'default' \| 'none' \| { url: string } \| { css: string }` | No | `'default'` | Style injection mode |
+| `renderTarget` | `'self' \| 'parent' \| 'top'` | No | `'self'` | Which document to render the widget in (useful for iframes) |
 
 ## API Reference
 
@@ -225,6 +240,21 @@ When using default styles, you can still customize by overriding these CSS class
 - `.journy-message-success` - Success messages (green border)
 - `.journy-message-warning` - Warning messages (orange border)
 - `.journy-message-error` - Error messages (red border)
+
+## Rendering Inside an Iframe
+
+If the SDK is loaded inside an iframe and you want the widget to appear on the parent page:
+
+```javascript
+const messaging = new JournyMessages({
+  writeKey: 'your-write-key',
+  entityType: 'user',
+  userId: 'user-123',
+  renderTarget: 'parent', // or 'top' for the top-level window
+});
+```
+
+The parent page must be same-origin. If cross-origin, the SDK falls back to rendering inside the iframe.
 
 ## Security
 

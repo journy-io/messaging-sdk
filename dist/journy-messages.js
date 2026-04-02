@@ -124,6 +124,28 @@
         }
     }
 
+    const DEFAULT_API_ENDPOINT = 'https://analyze.journy.io';
+    const DEFAULT_POLLING_INTERVAL = 30000;
+    const ROOT_ELEMENT_ID = 'journy-messages-root';
+    const DEFAULT_STYLE_ID = 'journy-messages-default';
+    const REACT_CHECK_INTERVAL = 100;
+    const REACT_WAIT_TIMEOUT = 10000;
+    const MESSAGE_CLOSE_DELAY = 300;
+    const DEFAULT_WIDGET_SETTINGS = {
+        pollingInterval: DEFAULT_POLLING_INTERVAL,
+        showReadMessages: true,
+        autoExpandOnNew: true,
+        displayMode: 'widget',
+        apiEndpoint: DEFAULT_API_ENDPOINT,
+        styles: 'default',
+    };
+    const STORAGE_KEYS = {
+        WIDGET_SETTINGS: 'widget_settings',
+        WIDGET_VISIBLE: 'widget_visible',
+        WIDGET_COLLAPSED: 'widget_collapsed',
+        CURRENT_MESSAGE_ID: 'current_message_id',
+    };
+
     const API_PATHS = {
         IN_APP_MESSAGES: '/sdk/in-app-messages',
     };
@@ -142,7 +164,7 @@
             return headers;
         }
         buildUrl(endpoint) {
-            const baseUrl = (this.config.apiEndpoint || 'https://jtm.journy.io').replace(/\/$/, '');
+            const baseUrl = (this.config.apiEndpoint || DEFAULT_API_ENDPOINT).replace(/\/$/, '');
             const entityId = this.config.entityType === 'user'
                 ? this.config.userId
                 : this.config.accountId;
@@ -203,14 +225,6 @@
         SDKEventType["MessageClosed"] = "In-App Message Closed";
         SDKEventType["MessageLinkClicked"] = "In-App Message Link Clicked";
     })(SDKEventType || (SDKEventType = {}));
-    const DEFAULT_WIDGET_SETTINGS = {
-        pollingInterval: 30000,
-        showReadMessages: true,
-        autoExpandOnNew: true,
-        displayMode: 'widget',
-        apiEndpoint: 'https://jtm.journy.io',
-        styles: 'default',
-    };
 
     const STORAGE_PREFIX = 'journy_messages_';
     function getStorageKey(key) {
@@ -364,17 +378,17 @@
     function isDebugSettings() {
         return getDebugFlags().settings === true;
     }
-    function createRootElement(id) {
-        let element = document.getElementById(id);
+    function createRootElement(id, doc = document) {
+        let element = doc.getElementById(id);
         if (!element) {
-            element = document.createElement('div');
+            element = doc.createElement('div');
             element.id = id;
-            document.body.appendChild(element);
+            doc.body.appendChild(element);
         }
         return element;
     }
-    function removeRootElement(id) {
-        const element = document.getElementById(id);
+    function removeRootElement(id, doc = document) {
+        const element = doc.getElementById(id);
         if (element) {
             element.remove();
         }
@@ -382,45 +396,76 @@
     const STYLES_LINK_ID = 'journy-messages-styles-link';
     const STYLES_TAG_ID = 'journy-messages-custom';
     const DEFAULT_STYLES_TAG_ID = 'journy-messages-default';
-    function injectStyleLink(href) {
-        if (typeof document === 'undefined' || !document.head)
+    function injectStyleLink(href, doc = document) {
+        if (!doc || !doc.head)
             return;
-        const existing = document.getElementById(STYLES_LINK_ID);
+        const existing = doc.getElementById(STYLES_LINK_ID);
         if (existing && existing instanceof HTMLLinkElement && existing.href === href)
             return;
         if (existing)
             existing.remove();
-        const link = document.createElement('link');
+        const link = doc.createElement('link');
         link.id = STYLES_LINK_ID;
         link.rel = 'stylesheet';
         link.href = href;
-        document.head.appendChild(link);
+        doc.head.appendChild(link);
     }
-    function injectStyleTag(css, id = STYLES_TAG_ID) {
-        if (typeof document === 'undefined' || !document.head)
+    function injectStyleTag(css, id = STYLES_TAG_ID, doc = document) {
+        if (!doc || !doc.head)
             return;
-        let style = document.getElementById(id);
+        let style = doc.getElementById(id);
         if (style) {
             style.textContent = css;
             return;
         }
-        style = document.createElement('style');
+        style = doc.createElement('style');
         style.id = id;
         style.textContent = css;
-        document.head.appendChild(style);
+        doc.head.appendChild(style);
     }
-    function removeInjectedStyles() {
-        if (typeof document === 'undefined')
+    function removeInjectedStyles(doc = document) {
+        if (!doc)
             return;
-        const link = document.getElementById(STYLES_LINK_ID);
+        const link = doc.getElementById(STYLES_LINK_ID);
         if (link)
             link.remove();
-        const style = document.getElementById(STYLES_TAG_ID);
+        const style = doc.getElementById(STYLES_TAG_ID);
         if (style)
             style.remove();
-        const defaultStyle = document.getElementById(DEFAULT_STYLES_TAG_ID);
+        const defaultStyle = doc.getElementById(DEFAULT_STYLES_TAG_ID);
         if (defaultStyle)
             defaultStyle.remove();
+    }
+
+    function canAccessWindow(win) {
+        try {
+            // Accessing .document on a cross-origin window throws DOMException
+            return !!win.document;
+        }
+        catch {
+            return false;
+        }
+    }
+    function resolveRenderContext(target) {
+        const sourceWindow = window;
+        if (!target || target === 'self') {
+            return { targetWindow: window, targetDocument: document, isRemote: false, sourceWindow };
+        }
+        const candidateWindow = target === 'top' ? window.top : window.parent;
+        if (!candidateWindow || candidateWindow === window) {
+            // Not inside an iframe — 'parent'/'top' is the same as 'self'
+            return { targetWindow: window, targetDocument: document, isRemote: false, sourceWindow };
+        }
+        if (canAccessWindow(candidateWindow)) {
+            return {
+                targetWindow: candidateWindow,
+                targetDocument: candidateWindow.document,
+                isRemote: true,
+                sourceWindow,
+            };
+        }
+        console.warn(`[JournyMessaging] Cannot access ${target} window (cross-origin). Falling back to rendering inside the current iframe.`);
+        return { targetWindow: window, targetDocument: document, isRemote: false, sourceWindow };
     }
 
     var defaultStyles = "/* Widget Container */\n.journy-message-widget {\n  position: fixed;\n  z-index: 10000;\n  background: white;\n  border-radius: 12px;\n  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);\n  overflow: hidden;\n  user-select: none;\n  transform-origin: bottom right;\n}\n\n.journy-message-widget.journy-message-widget-dragging {\n  cursor: grabbing;\n  transition: none;\n  z-index: 10001;\n}\n\n.journy-message-widget.journy-message-widget-expanded {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n}\n\n.journy-message-widget.journy-message-widget-resizing {\n  transition: none;\n}\n\n/* Expand/collapse: height and top are animated via inline transition so bottom-right stays fixed */\n\n/* Widget Header */\n.journy-message-widget-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: #f9fafb;\n  border-bottom: 1px solid #e5e7eb;\n  user-select: none;\n}\n\n.journy-message-widget-drag-handle {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 4px 8px;\n  margin-right: 8px;\n  cursor: grab;\n  color: #9ca3af;\n  transition: color 0.2s;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-drag-handle:active {\n  cursor: grabbing;\n  color: #6b7280;\n}\n\n.journy-message-widget-drag-handle:hover {\n  color: #6b7280;\n}\n\n.journy-message-widget-drag-handle svg {\n  display: block;\n}\n\n.journy-message-widget-header-content {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  flex: 1;\n  flex-wrap: wrap;\n  cursor: pointer;\n}\n\n.journy-message-widget-badge {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-width: 24px;\n  height: 24px;\n  padding: 0 8px;\n  background: #3b82f6;\n  color: white;\n  border-radius: 12px;\n  font-size: 12px;\n  font-weight: 600;\n}\n\n.journy-message-widget-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: #111827;\n}\n\n.journy-message-widget-read-count {\n  font-size: 12px;\n  color: #6b7280;\n  font-weight: 400;\n}\n\n.journy-message-widget-controls {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.journy-message-widget-toggle,\n.journy-message-widget-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-toggle:hover,\n.journy-message-widget-close:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n/* Widget Content */\n.journy-message-widget-content {\n  padding: 16px;\n  flex: 1;\n  overflow-y: auto;\n  overflow-x: hidden;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message {\n  flex: 1;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message .journy-message-content {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n}\n\n/* Resize Handle */\n.journy-message-widget-resize-handle {\n  position: absolute;\n  bottom: 0;\n  right: 0;\n  width: 20px;\n  height: 20px;\n  cursor: nwse-resize;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, #e5e7eb 40%, #e5e7eb 100%);\n  z-index: 10;\n  transition: background 0.2s;\n}\n\n.journy-message-widget-resize-handle:hover {\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, #d1d5db 40%, #d1d5db 100%);\n}\n\n.journy-message-widget-resize-handle svg {\n  width: 12px;\n  height: 12px;\n  opacity: 0.6;\n}\n\n.journy-message-widget-resize-handle:hover svg {\n  opacity: 1;\n}\n\n.journy-message-widget-message {\n  padding: 0;\n  position: relative;\n  min-height: 60px;\n}\n\n.journy-message-widget-message-close {\n  position: absolute;\n  top: 4px;\n  right: 4px;\n  width: 24px;\n  height: 24px;\n  padding: 0;\n  border: none;\n  background: transparent;\n  color: #6b7280;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transition: background-color 0.2s, color 0.2s;\n  z-index: 1;\n}\n\n.journy-message-widget-message-close:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-message-widget-message:has(.journy-message-widget-message-close) .journy-message-content {\n  padding-right: 28px;\n}\n\n.journy-message-widget-nav {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 6px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-nav:hover:not(:disabled) {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-message-widget-nav:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.journy-message-widget-message-separated {\n  margin-bottom: 24px;\n  padding-bottom: 24px;\n  border-bottom: 1px solid #e5e7eb;\n}\n\n.journy-message-widget-message-count {\n  font-size: 12px;\n  color: #6b7280;\n  font-weight: 400;\n  margin-left: 8px;\n}\n\n.journy-message-widget-position {\n  padding: 4px 12px;\n  font-size: 11px;\n  color: #9ca3af;\n  font-weight: 500;\n  text-align: right;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-message.journy-message-info {\n  border-left: 4px solid #3b82f6;\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-success {\n  border-left: 4px solid #10b981;\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-warning {\n  border-left: 4px solid #f59e0b;\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-error {\n  border-left: 4px solid #ef4444;\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-viewed {\n  border-left: 4px solid #6b7280;\n  padding-left: 12px;\n}\n\n/* Message modal (80vw x 60vh) */\n.journy-message-modal-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: rgba(0, 0, 0, 0.5);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10002;\n  padding: 20px;\n}\n\n.journy-message-modal {\n  width: 80vw;\n  max-width: 80vw;\n  height: 60vh;\n  max-height: 60vh;\n  background: white;\n  border-radius: 12px;\n  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  position: relative;\n}\n\n.journy-message-modal-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 16px 24px;\n  background: #f9fafb;\n  border-bottom: 1px solid #e5e7eb;\n  flex-shrink: 0;\n}\n\n.journy-message-modal-title {\n  font-size: 18px;\n  font-weight: 600;\n  color: #111827;\n}\n\n.journy-message-modal-close {\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-modal-close:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-message-modal .journy-message-widget-message {\n  padding: 24px 24px 24px 24px;\n  overflow-y: auto;\n  flex: 1;\n  min-height: 0;\n}\n\n/* Timestamp */\n.journy-message-timestamp {\n  font-size: 12px;\n  color: #6b7280;\n  margin-top: 4px;\n  line-height: 1.4;\n}\n\n.journy-message-content-clickable {\n  cursor: pointer;\n}\n\n.journy-message-content-clickable:hover {\n  opacity: 0.95;\n}\n\n/* Legacy Modal Overlay Styles (kept for backward compatibility) */\n.journy-message-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: rgba(0, 0, 0, 0.5);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10000;\n  opacity: 0;\n  transition: opacity 0.3s ease-in-out;\n  pointer-events: none;\n}\n\n.journy-message-overlay.journy-message-visible {\n  opacity: 1;\n  pointer-events: all;\n}\n\n.journy-message-popup {\n  background: white;\n  border-radius: 8px;\n  padding: 24px;\n  max-width: 500px;\n  width: 90%;\n  max-height: 80vh;\n  overflow-y: auto;\n  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);\n  position: relative;\n  transform: scale(0.9);\n  transition: transform 0.3s ease-in-out;\n}\n\n.journy-message-overlay.journy-message-visible .journy-message-popup {\n  transform: scale(1);\n}\n\n.journy-message-popup.journy-message-info {\n  border-top: 4px solid #3b82f6;\n}\n\n.journy-message-popup.journy-message-success {\n  border-top: 4px solid #10b981;\n}\n\n.journy-message-popup.journy-message-warning {\n  border-top: 4px solid #f59e0b;\n}\n\n.journy-message-popup.journy-message-error {\n  border-top: 4px solid #ef4444;\n}\n\n.journy-message-popup.journy-message-viewed {\n  border-top: 4px solid #6b7280;\n}\n\n.journy-message-close {\n  position: absolute;\n  top: 12px;\n  right: 12px;\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-close:hover {\n  background-color: #f3f4f6;\n  color: #374151;\n}\n\n.journy-message-title {\n  font-size: 20px;\n  font-weight: 600;\n  margin-bottom: 12px;\n  color: #111827;\n}\n\n.journy-message-content {\n  font-size: 16px;\n  line-height: 1.6;\n  color: #374151;\n  margin-bottom: 16px;\n}\n\n.journy-message-content a {\n  color: #3b82f6;\n  text-decoration: underline;\n  transition: color 0.2s;\n}\n\n.journy-message-content a:hover {\n  color: #2563eb;\n}\n\n.journy-message-content p {\n  margin: 0 0 12px 0;\n}\n\n.journy-message-content p:last-child {\n  margin-bottom: 0;\n}\n\n.journy-message-content ul,\n.journy-message-content ol {\n  margin: 12px 0;\n  padding-left: 24px;\n}\n\n.journy-message-content li {\n  margin-bottom: 8px;\n}\n\n/* Headings */\n.journy-message-content h1,\n.journy-message-content h2,\n.journy-message-content h3,\n.journy-message-content h4,\n.journy-message-content h5,\n.journy-message-content h6 {\n  margin: 16px 0 12px 0;\n  font-weight: 600;\n  line-height: 1.3;\n  color: #111827;\n}\n\n.journy-message-content h1 {\n  font-size: 24px;\n}\n\n.journy-message-content h2 {\n  font-size: 20px;\n}\n\n.journy-message-content h3 {\n  font-size: 18px;\n}\n\n.journy-message-content h4 {\n  font-size: 16px;\n}\n\n.journy-message-content h5,\n.journy-message-content h6 {\n  font-size: 14px;\n}\n\n/* Code blocks */\n.journy-message-content code {\n  background-color: #f3f4f6;\n  color: #ef4444;\n  padding: 2px 6px;\n  border-radius: 4px;\n  font-size: 0.9em;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n}\n\n.journy-message-content pre {\n  background-color: #1f2937;\n  color: #f9fafb;\n  padding: 16px;\n  border-radius: 8px;\n  overflow-x: auto;\n  margin: 12px 0;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n  font-size: 14px;\n  line-height: 1.5;\n}\n\n.journy-message-content pre code {\n  background-color: transparent;\n  color: inherit;\n  padding: 0;\n  border-radius: 0;\n  font-size: inherit;\n}\n\n/* Text formatting */\n.journy-message-content u {\n  text-decoration: underline;\n}\n\n.journy-message-content s,\n.journy-message-content strike,\n.journy-message-content del {\n  text-decoration: line-through;\n}\n\n.journy-message-content strong {\n  font-weight: 600;\n}\n\n.journy-message-content em {\n  font-style: italic;\n}\n\n/* Blockquotes */\n.journy-message-content blockquote {\n  border-left: 4px solid #e5e7eb;\n  padding-left: 16px;\n  margin: 12px 0;\n  color: #6b7280;\n  font-style: italic;\n}\n\n/* Tables */\n.journy-message-content table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 12px 0;\n}\n\n.journy-message-content th,\n.journy-message-content td {\n  border: 1px solid #e5e7eb;\n  padding: 8px 12px;\n  text-align: left;\n}\n\n.journy-message-content th {\n  background-color: #f9fafb;\n  font-weight: 600;\n}\n\n/* Horizontal rule */\n.journy-message-content hr {\n  border: none;\n  border-top: 1px solid #e5e7eb;\n  margin: 16px 0;\n}\n\n.journy-message-actions {\n  display: flex;\n  gap: 12px;\n  margin-top: 20px;\n  flex-wrap: wrap;\n}\n\n.journy-message-action {\n  padding: 10px 20px;\n  border-radius: 6px;\n  font-size: 14px;\n  font-weight: 500;\n  cursor: pointer;\n  border: none;\n  transition: all 0.2s;\n}\n\n.journy-message-action-primary {\n  background-color: #3b82f6;\n  color: white;\n}\n\n.journy-message-action-primary:hover {\n  background-color: #2563eb;\n}\n\n.journy-message-action-secondary {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-message-action-secondary:hover {\n  background-color: #d1d5db;\n}\n\n.journy-message-action-link {\n  background: none;\n  color: #3b82f6;\n  text-decoration: underline;\n  padding: 10px 0;\n}\n\n.journy-message-action-link:hover {\n  color: #2563eb;\n}\n\n/* Settings Panel */\n.journy-settings-panel {\n  position: absolute;\n  top: 0;\n  right: 0;\n  bottom: 0;\n  width: 100%;\n  background: white;\n  z-index: 10;\n  display: flex;\n  flex-direction: column;\n  transform: translateX(100%);\n  transition: transform 0.3s ease;\n}\n\n.journy-settings-panel-open {\n  transform: translateX(0);\n}\n\n.journy-settings-panel-closed {\n  transform: translateX(100%);\n}\n\n.journy-settings-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: #f9fafb;\n  border-bottom: 1px solid #e5e7eb;\n  flex-shrink: 0;\n}\n\n.journy-settings-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: #111827;\n}\n\n.journy-settings-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-settings-close:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-settings-body {\n  padding: 16px;\n  overflow-y: auto;\n  flex: 1;\n}\n\n.journy-settings-item {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 0;\n  border-bottom: 1px solid #f3f4f6;\n}\n\n.journy-settings-item:last-child {\n  border-bottom: none;\n}\n\n.journy-settings-label {\n  font-size: 13px;\n  font-weight: 500;\n  color: #374151;\n}\n\n.journy-settings-select {\n  padding: 6px 10px;\n  border: 1px solid #d1d5db;\n  border-radius: 6px;\n  font-size: 13px;\n  color: #374151;\n  background: white;\n  cursor: pointer;\n  outline: none;\n  transition: border-color 0.2s;\n}\n\n.journy-settings-select:focus {\n  border-color: #3b82f6;\n}\n\n.journy-settings-toggle {\n  position: relative;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  border: none;\n  background: #d1d5db;\n  cursor: pointer;\n  padding: 0;\n  transition: background-color 0.2s;\n  flex-shrink: 0;\n}\n\n.journy-settings-toggle-on {\n  background: #3b82f6;\n}\n\n.journy-settings-toggle-knob {\n  position: absolute;\n  top: 2px;\n  left: 2px;\n  width: 18px;\n  height: 18px;\n  border-radius: 50%;\n  background: white;\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);\n  transition: transform 0.2s;\n}\n\n.journy-settings-toggle-on .journy-settings-toggle-knob {\n  transform: translateX(18px);\n}\n\n.journy-settings-item-vertical {\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 6px;\n}\n\n.journy-settings-input {\n  width: 100%;\n  padding: 6px 10px;\n  border: 1px solid #d1d5db;\n  border-radius: 6px;\n  font-size: 13px;\n  color: #374151;\n  background: white;\n  outline: none;\n  transition: border-color 0.2s;\n  box-sizing: border-box;\n}\n\n.journy-settings-input:focus {\n  border-color: #3b82f6;\n}\n\n.journy-settings-input::placeholder {\n  color: #9ca3af;\n}\n\n.journy-settings-value {\n  font-size: 13px;\n  color: #6b7280;\n  font-weight: 400;\n  max-width: 60%;\n  text-align: right;\n  word-break: break-all;\n}\n\n.journy-message-widget-empty {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: #9ca3af;\n  font-size: 14px;\n  flex: 1;\n  min-height: 80px;\n}\n\n.journy-settings-advanced-btn {\n  background: none;\n  border: none;\n  font-size: 13px;\n  font-weight: 500;\n  color: #6b7280;\n  cursor: pointer;\n  padding: 0;\n  transition: color 0.2s;\n}\n\n.journy-settings-advanced-btn:hover {\n  color: #374151;\n}\n\n.journy-message-widget-settings-btn {\n  background: none;\n  border: none;\n  font-size: 16px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-settings-btn:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n/* Responsive design */\n@media (max-width: 640px) {\n  .journy-message-widget {\n    min-width: calc(100vw - 32px);\n    max-width: calc(100vw - 32px);\n    left: 16px !important;\n    right: 16px !important;\n  }\n\n  .journy-message-popup {\n    width: 95%;\n    padding: 20px;\n  }\n\n  .journy-message-title {\n    font-size: 18px;\n  }\n\n  .journy-message-content {\n    font-size: 14px;\n  }\n\n  .journy-message-actions {\n    flex-direction: column;\n  }\n\n  .journy-message-action {\n    width: 100%;\n  }\n}\n";
@@ -435,7 +480,7 @@
         return state;
     }
 
-    /*! @license DOMPurify 3.3.1 | (c) Cure53 and other contributors | Released under the Apache license 2.0 and Mozilla Public License 2.0 | github.com/cure53/DOMPurify/blob/3.3.1/LICENSE */
+    /*! @license DOMPurify 3.3.3 | (c) Cure53 and other contributors | Released under the Apache license 2.0 and Mozilla Public License 2.0 | github.com/cure53/DOMPurify/blob/3.3.3/LICENSE */
 
     const {
       entries,
@@ -733,7 +778,7 @@
     function createDOMPurify() {
       let window = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : getGlobal();
       const DOMPurify = root => createDOMPurify(root);
-      DOMPurify.version = '3.3.1';
+      DOMPurify.version = '3.3.3';
       DOMPurify.removed = [];
       if (!window || !window.document || window.document.nodeType !== NODE_TYPE.document || !window.Element) {
         // Not running in a browser, provide a factory function
@@ -1028,7 +1073,7 @@
         /* Parse profile info */
         if (USE_PROFILES) {
           ALLOWED_TAGS = addToSet({}, text);
-          ALLOWED_ATTR = [];
+          ALLOWED_ATTR = create(null);
           if (USE_PROFILES.html === true) {
             addToSet(ALLOWED_TAGS, html$1);
             addToSet(ALLOWED_ATTR, html);
@@ -1048,6 +1093,13 @@
             addToSet(ALLOWED_ATTR, mathMl);
             addToSet(ALLOWED_ATTR, xml);
           }
+        }
+        /* Prevent function-based ADD_ATTR / ADD_TAGS from leaking across calls */
+        if (!objectHasOwnProperty(cfg, 'ADD_TAGS')) {
+          EXTRA_ELEMENT_HANDLING.tagCheck = null;
+        }
+        if (!objectHasOwnProperty(cfg, 'ADD_ATTR')) {
+          EXTRA_ELEMENT_HANDLING.attributeCheck = null;
         }
         /* Merge configuration parameters */
         if (cfg.ADD_TAGS) {
@@ -1446,6 +1498,10 @@
        */
       // eslint-disable-next-line complexity
       const _isValidAttribute = function _isValidAttribute(lcTag, lcName, value) {
+        /* FORBID_ATTR must always win, even if ADD_ATTR predicate would allow it */
+        if (FORBID_ATTR[lcName]) {
+          return false;
+        }
         /* Make sure attribute cannot clobber */
         if (SANITIZE_DOM && (lcName === 'id' || lcName === 'name') && (value in document || value in formElement)) {
           return false;
@@ -1538,7 +1594,7 @@
             value = SANITIZE_NAMED_PROPS_PREFIX + value;
           }
           /* Work around a security issue with comments inside attributes */
-          if (SAFE_FOR_XML && regExpTest(/((--!?|])>)|<\/(style|title|textarea)/i, value)) {
+          if (SAFE_FOR_XML && regExpTest(/((--!?|])>)|<\/(style|script|title|xmp|textarea|noscript|iframe|noembed|noframes)/i, value)) {
             _removeAttribute(name, currentNode);
             continue;
           }
@@ -1953,7 +2009,7 @@
                 showAdvanced && (React__namespace.createElement(React__namespace.Fragment, null,
                     React__namespace.createElement("div", { className: "journy-settings-item journy-settings-item-vertical" },
                         React__namespace.createElement("label", { className: "journy-settings-label" }, "API endpoint"),
-                        React__namespace.createElement("input", { type: "text", className: "journy-settings-input", value: settings.apiEndpoint, onChange: (e) => update({ apiEndpoint: e.target.value }), placeholder: "https://jtm.journy.io" })),
+                        React__namespace.createElement("input", { type: "text", className: "journy-settings-input", value: settings.apiEndpoint, onChange: (e) => update({ apiEndpoint: e.target.value }), placeholder: DEFAULT_API_ENDPOINT })),
                     configInfo && (React__namespace.createElement(React__namespace.Fragment, null,
                         React__namespace.createElement("div", { className: "journy-settings-item" },
                             React__namespace.createElement("label", { className: "journy-settings-label" }, "Entity type"),
@@ -1992,6 +2048,17 @@
         React__namespace.createElement("svg", { width: ICON_SIZE, height: ICON_SIZE, viewBox: `0 0 ${ICON_SIZE} ${ICON_SIZE}`, fill: "none", xmlns: "http://www.w3.org/2000/svg" },
             React__namespace.createElement("path", { d: `${PATH_MAIN} ${PATH_INNER}`, stroke: "#9ca3af", strokeWidth: STROKE_WIDTH, strokeLinecap: "round" }))));
 
+    const defaultContext = {
+        targetWindow: typeof window !== 'undefined' ? window : null,
+        targetDocument: typeof document !== 'undefined' ? document : null,
+        isRemote: false,
+        sourceWindow: typeof window !== 'undefined' ? window : null,
+    };
+    const RenderCtx = React__namespace.createContext(defaultContext);
+    function useRenderContext() {
+        return React__namespace.useContext(RenderCtx);
+    }
+
     const COLLAPSED_WIDTH = 300;
     const COLLAPSED_HEIGHT = 80;
     const WIDGET_MODE_EXPANDED_WIDTH = 340;
@@ -2004,12 +2071,13 @@
     const MIN_LIST_HEIGHT = 200;
     const MIN_POSITION_THRESHOLD = 0;
     function useWidgetDragResize({ isCollapsed, isListMode }) {
+        const { targetWindow, targetDocument } = useRenderContext();
         const [position, setPosition] = React.useState(() => {
             const saved = getItem('widget_position');
             if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
                 return {
-                    left: Math.max(0, Math.min(saved.left, window.innerWidth - COLLAPSED_WIDTH)),
-                    top: Math.max(0, Math.min(saved.top, window.innerHeight - COLLAPSED_HEIGHT)),
+                    left: Math.max(0, Math.min(saved.left, targetWindow.innerWidth - COLLAPSED_WIDTH)),
+                    top: Math.max(0, Math.min(saved.top, targetWindow.innerHeight - COLLAPSED_HEIGHT)),
                 };
             }
             if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
@@ -2019,8 +2087,8 @@
                 };
             }
             return {
-                left: window.innerWidth - DEFAULT_EDGE_OFFSET - COLLAPSED_WIDTH,
-                top: window.innerHeight - DEFAULT_EDGE_OFFSET - COLLAPSED_HEIGHT,
+                left: targetWindow.innerWidth - DEFAULT_EDGE_OFFSET - COLLAPSED_WIDTH,
+                top: targetWindow.innerHeight - DEFAULT_EDGE_OFFSET - COLLAPSED_HEIGHT,
             };
         });
         const [size, setSize] = React.useState({ width: LIST_MODE_DEFAULT_WIDTH, height: LIST_MODE_DEFAULT_HEIGHT });
@@ -2046,18 +2114,18 @@
             const savedSize = getItem('widget_size');
             if (savedSize) {
                 setSize({
-                    width: Math.max(MIN_LIST_WIDTH, Math.min(savedSize.width, window.innerWidth - VIEWPORT_PADDING)),
-                    height: Math.max(MIN_LIST_HEIGHT, Math.min(savedSize.height, window.innerHeight - VIEWPORT_PADDING)),
+                    width: Math.max(MIN_LIST_WIDTH, Math.min(savedSize.width, targetWindow.innerWidth - VIEWPORT_PADDING)),
+                    height: Math.max(MIN_LIST_HEIGHT, Math.min(savedSize.height, targetWindow.innerHeight - VIEWPORT_PADDING)),
                 });
             }
         }, []);
         // Clamp position so widget stays on screen
         React.useEffect(() => {
             setPosition(prev => ({
-                left: Math.max(0, Math.min(prev.left, window.innerWidth - currentWidth)),
-                top: Math.max(0, Math.min(prev.top, window.innerHeight - currentHeight)),
+                left: Math.max(0, Math.min(prev.left, targetWindow.innerWidth - currentWidth)),
+                top: Math.max(0, Math.min(prev.top, targetWindow.innerHeight - currentHeight)),
             }));
-        }, [currentWidth, currentHeight]);
+        }, [currentWidth, currentHeight, targetWindow]);
         // Save position when it changes
         React.useEffect(() => {
             if (position.left > MIN_POSITION_THRESHOLD || position.top > MIN_POSITION_THRESHOLD) {
@@ -2074,13 +2142,13 @@
         React.useEffect(() => {
             const handleResize = () => {
                 setPosition(prev => ({
-                    left: Math.max(0, Math.min(prev.left, window.innerWidth - currentWidth)),
-                    top: Math.max(0, Math.min(prev.top, window.innerHeight - currentHeight)),
+                    left: Math.max(0, Math.min(prev.left, targetWindow.innerWidth - currentWidth)),
+                    top: Math.max(0, Math.min(prev.top, targetWindow.innerHeight - currentHeight)),
                 }));
             };
-            window.addEventListener('resize', handleResize);
-            return () => window.removeEventListener('resize', handleResize);
-        }, [currentWidth, currentHeight]);
+            targetWindow.addEventListener('resize', handleResize);
+            return () => targetWindow.removeEventListener('resize', handleResize);
+        }, [currentWidth, currentHeight, targetWindow]);
         const handleMouseDown = (e) => {
             const target = e.target;
             if (!target.closest('.journy-message-widget-drag-handle'))
@@ -2105,15 +2173,15 @@
                     const newLeft = e.clientX - dragOffset.x;
                     const newTop = e.clientY - dragOffset.y;
                     setPosition({
-                        left: Math.max(0, Math.min(newLeft, window.innerWidth - currentWidth)),
-                        top: Math.max(0, Math.min(newTop, window.innerHeight - currentHeight)),
+                        left: Math.max(0, Math.min(newLeft, targetWindow.innerWidth - currentWidth)),
+                        top: Math.max(0, Math.min(newTop, targetWindow.innerHeight - currentHeight)),
                     });
                 }
                 else if (isResizing && resizeStart) {
                     const deltaX = e.clientX - resizeStart.x;
                     const deltaY = e.clientY - resizeStart.y;
-                    const maxWidth = window.innerWidth - position.left;
-                    const maxHeight = window.innerHeight - position.top;
+                    const maxWidth = targetWindow.innerWidth - position.left;
+                    const maxHeight = targetWindow.innerHeight - position.top;
                     const newWidth = Math.max(MIN_LIST_WIDTH, Math.min(resizeStart.width + deltaX, maxWidth));
                     const newHeight = Math.max(MIN_LIST_HEIGHT, Math.min(resizeStart.height + deltaY, maxHeight));
                     setSize({ width: newWidth, height: newHeight });
@@ -2130,13 +2198,13 @@
                 setIsResizing(false);
                 setResizeStart(null);
             };
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
+            targetDocument.addEventListener('mousemove', handleMouseMove);
+            targetDocument.addEventListener('mouseup', handleMouseUp);
             return () => {
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
+                targetDocument.removeEventListener('mousemove', handleMouseMove);
+                targetDocument.removeEventListener('mouseup', handleMouseUp);
             };
-        }, [isDragging, isResizing, dragOffset, resizeStart, position, currentWidth, currentHeight]);
+        }, [isDragging, isResizing, dragOffset, resizeStart, position, currentWidth, currentHeight, targetDocument]);
         const handleResizeStart = (e) => {
             e.stopPropagation();
             if (!widgetRef.current)
@@ -2166,8 +2234,14 @@
     const TRANSITION_DURATION_S = 0.25;
 
     const SETTINGS_STORAGE_KEY = 'widget_settings';
-    /** Mark message as received when its element is visible in the viewport. */
+    /**
+     * Mark message as received when its element is visible in the viewport.
+     * When running inside an iframe without remote rendering (renderTarget: 'self'),
+     * the IntersectionObserver would use the tiny iframe viewport and fire immediately,
+     * so we skip it and rely on explicit user interactions instead.
+     */
     function useMessageVisibility(ref, messageId, received, onMessageReceived) {
+        const { isRemote } = useRenderContext();
         const hasFiredRef = React.useRef(false);
         React.useEffect(() => {
             if (received) {
@@ -2177,6 +2251,17 @@
             hasFiredRef.current = false;
             const el = ref.current;
             if (!el || !onMessageReceived)
+                return;
+            // Skip IntersectionObserver when inside an iframe but rendering to self —
+            // the iframe viewport is likely too small, causing false positives.
+            let isInIframe;
+            try {
+                isInIframe = window !== window.top;
+            }
+            catch {
+                isInIframe = true;
+            }
+            if (isInIframe && !isRemote)
                 return;
             const observer = new IntersectionObserver((entries) => {
                 const [entry] = entries;
@@ -2188,7 +2273,7 @@
             }, { threshold: 0.1, root: null });
             observer.observe(el);
             return () => observer.disconnect();
-        }, [messageId, received, onMessageReceived]);
+        }, [messageId, received, onMessageReceived, isRemote]);
     }
     /** Wraps a message row with a ref and viewport visibility observer to mark as received when visible. */
     const MessageRow = ({ message, isSeparated, onMessageReceived, onDismissMessage, children }) => {
@@ -2208,7 +2293,6 @@
             const unreadCount = messages.filter((m) => !m.received).length;
             const readCount = messages.filter((m) => m.received).length;
             return {
-                totalCount: messages.length,
                 unreadCount,
                 readCount,
             };
@@ -2216,7 +2300,7 @@
     }
     const MessageWidget = ({ store, onClose, onCloseWidget, onLinkClick, onToggleExpand, onMessageReceived, onDismissMessage, onNextMessage, onPrevMessage, onSettingsChange, configInfo, }) => {
         const { messages, currentMessage, isCollapsed, displayMode, widgetVisible } = useMessagingStore(store);
-        const { totalCount, unreadCount, readCount } = useMessageCounts(messages);
+        const { unreadCount, readCount } = useMessageCounts(messages);
         const [modalMessage, setModalMessage] = React.useState(null);
         const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
         const [settings, setSettings] = React.useState(() => {
@@ -2431,7 +2515,7 @@
     class AnalyticsClient {
         constructor(config) {
             this.config = config;
-            this.analyticsHost = config.apiEndpoint || "https://jtm.journy.io";
+            this.analyticsHost = config.apiEndpoint || DEFAULT_API_ENDPOINT;
         }
         get trackIdentity() {
             return {
@@ -2464,19 +2548,6 @@
         }
     }
 
-    const DEFAULT_API_ENDPOINT = 'https://jtm.journy.io';
-    const DEFAULT_POLLING_INTERVAL = 30000;
-    const ROOT_ELEMENT_ID = 'journy-messages-root';
-    const DEFAULT_STYLE_ID = 'journy-messages-default';
-    const REACT_CHECK_INTERVAL = 100;
-    const REACT_WAIT_TIMEOUT = 10000;
-    const MESSAGE_CLOSE_DELAY = 300;
-    const STORAGE_KEYS = {
-        WIDGET_SETTINGS: 'widget_settings',
-        WIDGET_VISIBLE: 'widget_visible',
-        WIDGET_COLLAPSED: 'widget_collapsed',
-        CURRENT_MESSAGE_ID: 'current_message_id',
-    };
     class JournyMessaging {
         constructor(config) {
             this.initialized = false;
@@ -2485,6 +2556,7 @@
             this.reactRootContainer = null;
             this.rootElementId = ROOT_ELEMENT_ID;
             this.unsubscribePersistence = null;
+            this.beforeUnloadHandler = null;
             this.config = {
                 apiEndpoint: DEFAULT_API_ENDPOINT,
                 pollingInterval: DEFAULT_POLLING_INTERVAL,
@@ -2496,22 +2568,32 @@
             if (!this.config.entityType) {
                 throw new Error('entityType is required');
             }
+            this.renderCtx = resolveRenderContext(config.renderTarget);
+            // Clean up parent DOM when iframe unloads
+            if (this.renderCtx.isRemote) {
+                this.beforeUnloadHandler = () => this.destroy();
+                window.addEventListener('beforeunload', this.beforeUnloadHandler);
+            }
             this.apiClient = new ApiClient(this.config);
             this.messageQueue = new MessageQueue();
             this.analyticsClient = new AnalyticsClient(this.config);
             this.eventTracker = new EventTracker(this.analyticsClient);
-            // Build default settings from config, then overlay any saved settings
-            const configDefaults = {
-                ...DEFAULT_WIDGET_SETTINGS,
-                pollingInterval: this.config.pollingInterval || DEFAULT_WIDGET_SETTINGS.pollingInterval,
-                displayMode: this.config.displayMode || DEFAULT_WIDGET_SETTINGS.displayMode,
-                apiEndpoint: this.config.apiEndpoint || DEFAULT_WIDGET_SETTINGS.apiEndpoint,
-                styles: this.config.styles || DEFAULT_WIDGET_SETTINGS.styles,
+            // Build default settings from config, then overlay any saved settings.
+            // Explicit config values (provided by the host) always take precedence over
+            // saved localStorage settings so that changing config.js is never silently
+            // ignored.
+            const configOverrides = {
+                ...(config.pollingInterval != null && { pollingInterval: config.pollingInterval }),
+                ...(config.displayMode != null && { displayMode: config.displayMode }),
+                ...(config.apiEndpoint != null && { apiEndpoint: config.apiEndpoint }),
+                ...(config.styles != null && { styles: config.styles }),
             };
             const savedSettings = getItem(STORAGE_KEYS.WIDGET_SETTINGS);
-            this.widgetSettings = savedSettings
-                ? { ...configDefaults, ...savedSettings }
-                : configDefaults;
+            this.widgetSettings = {
+                ...DEFAULT_WIDGET_SETTINGS,
+                ...(savedSettings || {}),
+                ...configOverrides,
+            };
             // Apply settings back to config so they take effect
             this.config.pollingInterval = this.widgetSettings.pollingInterval;
             this.config.apiEndpoint = this.widgetSettings.apiEndpoint;
@@ -2633,23 +2715,24 @@
             }, this.config.pollingInterval || DEFAULT_POLLING_INTERVAL);
         }
         applyStyles(stylesConfig) {
-            removeInjectedStyles();
+            const doc = this.renderCtx.targetDocument;
+            removeInjectedStyles(doc);
             if (stylesConfig === 'none') ;
             else if (stylesConfig && stylesConfig !== 'default') {
                 if ('url' in stylesConfig && stylesConfig.url) {
-                    injectStyleLink(stylesConfig.url);
+                    injectStyleLink(stylesConfig.url, doc);
                 }
                 else if ('css' in stylesConfig && stylesConfig.css) {
-                    injectStyleTag(stylesConfig.css);
+                    injectStyleTag(stylesConfig.css, undefined, doc);
                 }
             }
             else {
-                injectStyleTag(defaultStyles, DEFAULT_STYLE_ID);
+                injectStyleTag(defaultStyles, DEFAULT_STYLE_ID, doc);
             }
         }
         initializeUI() {
-            // Create root element for React
-            const rootElement = createRootElement(this.rootElementId);
+            // Create root element for React in the target document
+            const rootElement = createRootElement(this.rootElementId, this.renderCtx.targetDocument);
             this.applyStyles(this.widgetSettings.styles);
             // Always render UI (even if no messages) so widget can show/hide itself
             // Dynamically import React and render component
@@ -2707,7 +2790,8 @@
                         accountId: this.config.accountId,
                     },
                 };
-                const element = React.createElement(MessageWidget$1, props);
+                const widgetElement = React.createElement(MessageWidget$1, props);
+                const element = React.createElement(RenderCtx.Provider, { value: this.renderCtx }, widgetElement);
                 // Use React 18 createRoot if available, otherwise fall back to render
                 if (ReactDOM.createRoot) {
                     if (!this.reactRoot) {
@@ -2893,8 +2977,12 @@
                 this.reactRoot = null;
                 this.reactRootContainer = null;
             }
-            removeRootElement(this.rootElementId);
-            removeInjectedStyles();
+            if (this.beforeUnloadHandler) {
+                window.removeEventListener('beforeunload', this.beforeUnloadHandler);
+                this.beforeUnloadHandler = null;
+            }
+            removeRootElement(this.rootElementId, this.renderCtx.targetDocument);
+            removeInjectedStyles(this.renderCtx.targetDocument);
         }
     }
 

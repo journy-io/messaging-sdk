@@ -7,6 +7,7 @@ export declare enum SDKEventType {
 export type MessageStatus = 'pending' | 'sent' | 'read' | 'expired';
 export type MessageScope = 'account' | 'user';
 export type AppDisplayMode = 'widget' | 'list';
+export type RenderTarget = 'self' | 'parent' | 'top';
 export interface Message {
     id: string;
     appId: string;
@@ -33,7 +34,6 @@ export interface WidgetSettings {
     apiEndpoint: string;
     styles: StylesConfig;
 }
-export declare const DEFAULT_WIDGET_SETTINGS: WidgetSettings;
 export interface ApiResponse<T> {
     data: T;
     success: boolean;
