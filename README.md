@@ -81,6 +81,118 @@ const messaging = new JournyMessages({
 
 > **Note**: The SDK renders its widget using `window.React` and `window.ReactDOM`. In a bundled React app these are not on `window` by default — you must assign them before creating a `JournyMessaging` instance. When using script tags, the UMD builds set these globals automatically.
 
+## React Integration
+
+### Using a Component
+
+Create a reusable component that initializes and cleans up the SDK:
+
+```tsx
+// src/components/JournyWidget.tsx
+import { useEffect, useRef } from 'react';
+import React from 'react';
+import ReactDOM from 'react-dom';
+import { JournyMessaging } from '@journyio/messaging-sdk';
+
+window.React = React;
+window.ReactDOM = ReactDOM;
+
+interface Props {
+  writeKey: string;
+  userId?: string;
+  accountId?: string;
+  entityType: 'user' | 'account';
+}
+
+export function JournyWidget({ writeKey, userId, accountId, entityType }: Props) {
+  const messagingRef = useRef<JournyMessaging | null>(null);
+
+  useEffect(() => {
+    messagingRef.current = new JournyMessaging({
+      writeKey,
+      entityType,
+      userId,
+      accountId,
+    });
+
+    return () => {
+      messagingRef.current?.destroy();
+      messagingRef.current = null;
+    };
+  }, [writeKey, entityType, userId, accountId]);
+
+  return null; // The SDK manages its own DOM
+}
+```
+
+Then use it anywhere in your app:
+
+```tsx
+import { JournyWidget } from './components/JournyWidget';
+
+function App() {
+  return (
+    <div>
+      <h1>My Application</h1>
+      <JournyWidget
+        writeKey="your-write-key"
+        entityType="user"
+        userId="user-123"
+      />
+    </div>
+  );
+}
+```
+
+### Using a Custom Hook (after authentication)
+
+A common pattern is to start the widget only after the user logs in:
+
+```tsx
+// src/hooks/useJournyMessaging.ts
+import { useEffect, useRef } from 'react';
+import React from 'react';
+import ReactDOM from 'react-dom';
+import { JournyMessaging } from '@journyio/messaging-sdk';
+
+window.React = React;
+window.ReactDOM = ReactDOM;
+
+export function useJournyMessaging(user: { id: string } | null) {
+  const messagingRef = useRef<JournyMessaging | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+
+    messagingRef.current = new JournyMessaging({
+      writeKey: 'your-write-key',
+      entityType: 'user',
+      userId: user.id,
+    });
+
+    return () => {
+      messagingRef.current?.destroy();
+      messagingRef.current = null;
+    };
+  }, [user?.id]);
+
+  return messagingRef;
+}
+```
+
+```tsx
+// src/App.tsx
+import { useJournyMessaging } from './hooks/useJournyMessaging';
+import { useAuth } from './auth';
+
+function App() {
+  const { user } = useAuth();
+  useJournyMessaging(user);
+
+  return <div>{/* your app */}</div>;
+}
+```
+
 ## Configuration
 
 ### Basic Configuration
