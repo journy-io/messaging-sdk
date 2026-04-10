@@ -99,9 +99,7 @@
             return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         }
         sortByPriority() {
-            const unreadMessages = this.queue.filter((m) => !m.received);
-            const readMessages = this.queue.filter((m) => m.received);
-            this.queue = [...unreadMessages.sort(this.sortByCreatedAt), ...readMessages.sort(this.sortByCreatedAt)];
+            this.queue.sort(this.sortByCreatedAt);
         }
         removeExpiredMessages() {
             const now = new Date();
@@ -135,7 +133,7 @@
         pollingInterval: DEFAULT_POLLING_INTERVAL,
         showReadMessages: true,
         autoExpandOnNew: true,
-        displayMode: 'widget',
+        displayMode: 'list',
         apiEndpoint: DEFAULT_API_ENDPOINT,
         styles: 'default',
     };
@@ -468,7 +466,116 @@
         return { targetWindow: window, targetDocument: document, isRemote: false, sourceWindow };
     }
 
-    var defaultStyles = "/* Widget Container */\n.journy-message-widget {\n  position: fixed;\n  z-index: 10000;\n  background: white;\n  border-radius: 12px;\n  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);\n  overflow: hidden;\n  user-select: none;\n  transform-origin: bottom right;\n}\n\n.journy-message-widget.journy-message-widget-dragging {\n  cursor: grabbing;\n  transition: none;\n  z-index: 10001;\n}\n\n.journy-message-widget.journy-message-widget-expanded {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n}\n\n.journy-message-widget.journy-message-widget-resizing {\n  transition: none;\n}\n\n/* Expand/collapse: height and top are animated via inline transition so bottom-right stays fixed */\n\n/* Widget Header */\n.journy-message-widget-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: #f9fafb;\n  border-bottom: 1px solid #e5e7eb;\n  user-select: none;\n}\n\n.journy-message-widget-drag-handle {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 4px 8px;\n  margin-right: 8px;\n  cursor: grab;\n  color: #9ca3af;\n  transition: color 0.2s;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-drag-handle:active {\n  cursor: grabbing;\n  color: #6b7280;\n}\n\n.journy-message-widget-drag-handle:hover {\n  color: #6b7280;\n}\n\n.journy-message-widget-drag-handle svg {\n  display: block;\n}\n\n.journy-message-widget-header-content {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  flex: 1;\n  flex-wrap: wrap;\n  cursor: pointer;\n}\n\n.journy-message-widget-badge {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-width: 24px;\n  height: 24px;\n  padding: 0 8px;\n  background: #3b82f6;\n  color: white;\n  border-radius: 12px;\n  font-size: 12px;\n  font-weight: 600;\n}\n\n.journy-message-widget-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: #111827;\n}\n\n.journy-message-widget-read-count {\n  font-size: 12px;\n  color: #6b7280;\n  font-weight: 400;\n}\n\n.journy-message-widget-controls {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.journy-message-widget-toggle,\n.journy-message-widget-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-toggle:hover,\n.journy-message-widget-close:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n/* Widget Content */\n.journy-message-widget-content {\n  padding: 16px;\n  flex: 1;\n  overflow-y: auto;\n  overflow-x: hidden;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message {\n  flex: 1;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message .journy-message-content {\n  flex: 1;\n  min-height: 0;\n  overflow-y: auto;\n}\n\n/* Resize Handle */\n.journy-message-widget-resize-handle {\n  position: absolute;\n  bottom: 0;\n  right: 0;\n  width: 20px;\n  height: 20px;\n  cursor: nwse-resize;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, #e5e7eb 40%, #e5e7eb 100%);\n  z-index: 10;\n  transition: background 0.2s;\n}\n\n.journy-message-widget-resize-handle:hover {\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, #d1d5db 40%, #d1d5db 100%);\n}\n\n.journy-message-widget-resize-handle svg {\n  width: 12px;\n  height: 12px;\n  opacity: 0.6;\n}\n\n.journy-message-widget-resize-handle:hover svg {\n  opacity: 1;\n}\n\n.journy-message-widget-message {\n  padding: 0;\n  position: relative;\n  min-height: 60px;\n}\n\n.journy-message-widget-message-close {\n  position: absolute;\n  top: 4px;\n  right: 4px;\n  width: 24px;\n  height: 24px;\n  padding: 0;\n  border: none;\n  background: transparent;\n  color: #6b7280;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transition: background-color 0.2s, color 0.2s;\n  z-index: 1;\n}\n\n.journy-message-widget-message-close:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-message-widget-message:has(.journy-message-widget-message-close) .journy-message-content {\n  padding-right: 28px;\n}\n\n.journy-message-widget-nav {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 6px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-nav:hover:not(:disabled) {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-message-widget-nav:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.journy-message-widget-message-separated {\n  margin-bottom: 24px;\n  padding-bottom: 24px;\n  border-bottom: 1px solid #e5e7eb;\n}\n\n.journy-message-widget-message-count {\n  font-size: 12px;\n  color: #6b7280;\n  font-weight: 400;\n  margin-left: 8px;\n}\n\n.journy-message-widget-position {\n  padding: 4px 12px;\n  font-size: 11px;\n  color: #9ca3af;\n  font-weight: 500;\n  text-align: right;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-message.journy-message-info {\n  border-left: 4px solid #3b82f6;\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-success {\n  border-left: 4px solid #10b981;\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-warning {\n  border-left: 4px solid #f59e0b;\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-error {\n  border-left: 4px solid #ef4444;\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-viewed {\n  border-left: 4px solid #6b7280;\n  padding-left: 12px;\n}\n\n/* Message modal (80vw x 60vh) */\n.journy-message-modal-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: rgba(0, 0, 0, 0.5);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10002;\n  padding: 20px;\n}\n\n.journy-message-modal {\n  width: 80vw;\n  max-width: 80vw;\n  height: 60vh;\n  max-height: 60vh;\n  background: white;\n  border-radius: 12px;\n  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  position: relative;\n}\n\n.journy-message-modal-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 16px 24px;\n  background: #f9fafb;\n  border-bottom: 1px solid #e5e7eb;\n  flex-shrink: 0;\n}\n\n.journy-message-modal-title {\n  font-size: 18px;\n  font-weight: 600;\n  color: #111827;\n}\n\n.journy-message-modal-close {\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-modal-close:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-message-modal .journy-message-widget-message {\n  padding: 24px 24px 24px 24px;\n  overflow-y: auto;\n  flex: 1;\n  min-height: 0;\n}\n\n/* Timestamp */\n.journy-message-timestamp {\n  font-size: 12px;\n  color: #6b7280;\n  margin-top: 4px;\n  line-height: 1.4;\n}\n\n.journy-message-content-clickable {\n  cursor: pointer;\n}\n\n.journy-message-content-clickable:hover {\n  opacity: 0.95;\n}\n\n/* Legacy Modal Overlay Styles (kept for backward compatibility) */\n.journy-message-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: rgba(0, 0, 0, 0.5);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10000;\n  opacity: 0;\n  transition: opacity 0.3s ease-in-out;\n  pointer-events: none;\n}\n\n.journy-message-overlay.journy-message-visible {\n  opacity: 1;\n  pointer-events: all;\n}\n\n.journy-message-popup {\n  background: white;\n  border-radius: 8px;\n  padding: 24px;\n  max-width: 500px;\n  width: 90%;\n  max-height: 80vh;\n  overflow-y: auto;\n  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);\n  position: relative;\n  transform: scale(0.9);\n  transition: transform 0.3s ease-in-out;\n}\n\n.journy-message-overlay.journy-message-visible .journy-message-popup {\n  transform: scale(1);\n}\n\n.journy-message-popup.journy-message-info {\n  border-top: 4px solid #3b82f6;\n}\n\n.journy-message-popup.journy-message-success {\n  border-top: 4px solid #10b981;\n}\n\n.journy-message-popup.journy-message-warning {\n  border-top: 4px solid #f59e0b;\n}\n\n.journy-message-popup.journy-message-error {\n  border-top: 4px solid #ef4444;\n}\n\n.journy-message-popup.journy-message-viewed {\n  border-top: 4px solid #6b7280;\n}\n\n.journy-message-close {\n  position: absolute;\n  top: 12px;\n  right: 12px;\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-close:hover {\n  background-color: #f3f4f6;\n  color: #374151;\n}\n\n.journy-message-title {\n  font-size: 20px;\n  font-weight: 600;\n  margin-bottom: 12px;\n  color: #111827;\n}\n\n.journy-message-content {\n  font-size: 16px;\n  line-height: 1.6;\n  color: #374151;\n  margin-bottom: 16px;\n}\n\n.journy-message-content a {\n  color: #3b82f6;\n  text-decoration: underline;\n  transition: color 0.2s;\n}\n\n.journy-message-content a:hover {\n  color: #2563eb;\n}\n\n.journy-message-content p {\n  margin: 0 0 12px 0;\n}\n\n.journy-message-content p:last-child {\n  margin-bottom: 0;\n}\n\n.journy-message-content ul,\n.journy-message-content ol {\n  margin: 12px 0;\n  padding-left: 24px;\n}\n\n.journy-message-content li {\n  margin-bottom: 8px;\n}\n\n/* Headings */\n.journy-message-content h1,\n.journy-message-content h2,\n.journy-message-content h3,\n.journy-message-content h4,\n.journy-message-content h5,\n.journy-message-content h6 {\n  margin: 16px 0 12px 0;\n  font-weight: 600;\n  line-height: 1.3;\n  color: #111827;\n}\n\n.journy-message-content h1 {\n  font-size: 24px;\n}\n\n.journy-message-content h2 {\n  font-size: 20px;\n}\n\n.journy-message-content h3 {\n  font-size: 18px;\n}\n\n.journy-message-content h4 {\n  font-size: 16px;\n}\n\n.journy-message-content h5,\n.journy-message-content h6 {\n  font-size: 14px;\n}\n\n/* Code blocks */\n.journy-message-content code {\n  background-color: #f3f4f6;\n  color: #ef4444;\n  padding: 2px 6px;\n  border-radius: 4px;\n  font-size: 0.9em;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n}\n\n.journy-message-content pre {\n  background-color: #1f2937;\n  color: #f9fafb;\n  padding: 16px;\n  border-radius: 8px;\n  overflow-x: auto;\n  margin: 12px 0;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n  font-size: 14px;\n  line-height: 1.5;\n}\n\n.journy-message-content pre code {\n  background-color: transparent;\n  color: inherit;\n  padding: 0;\n  border-radius: 0;\n  font-size: inherit;\n}\n\n/* Text formatting */\n.journy-message-content u {\n  text-decoration: underline;\n}\n\n.journy-message-content s,\n.journy-message-content strike,\n.journy-message-content del {\n  text-decoration: line-through;\n}\n\n.journy-message-content strong {\n  font-weight: 600;\n}\n\n.journy-message-content em {\n  font-style: italic;\n}\n\n/* Blockquotes */\n.journy-message-content blockquote {\n  border-left: 4px solid #e5e7eb;\n  padding-left: 16px;\n  margin: 12px 0;\n  color: #6b7280;\n  font-style: italic;\n}\n\n/* Tables */\n.journy-message-content table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 12px 0;\n}\n\n.journy-message-content th,\n.journy-message-content td {\n  border: 1px solid #e5e7eb;\n  padding: 8px 12px;\n  text-align: left;\n}\n\n.journy-message-content th {\n  background-color: #f9fafb;\n  font-weight: 600;\n}\n\n/* Horizontal rule */\n.journy-message-content hr {\n  border: none;\n  border-top: 1px solid #e5e7eb;\n  margin: 16px 0;\n}\n\n.journy-message-actions {\n  display: flex;\n  gap: 12px;\n  margin-top: 20px;\n  flex-wrap: wrap;\n}\n\n.journy-message-action {\n  padding: 10px 20px;\n  border-radius: 6px;\n  font-size: 14px;\n  font-weight: 500;\n  cursor: pointer;\n  border: none;\n  transition: all 0.2s;\n}\n\n.journy-message-action-primary {\n  background-color: #3b82f6;\n  color: white;\n}\n\n.journy-message-action-primary:hover {\n  background-color: #2563eb;\n}\n\n.journy-message-action-secondary {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-message-action-secondary:hover {\n  background-color: #d1d5db;\n}\n\n.journy-message-action-link {\n  background: none;\n  color: #3b82f6;\n  text-decoration: underline;\n  padding: 10px 0;\n}\n\n.journy-message-action-link:hover {\n  color: #2563eb;\n}\n\n/* Settings Panel */\n.journy-settings-panel {\n  position: absolute;\n  top: 0;\n  right: 0;\n  bottom: 0;\n  width: 100%;\n  background: white;\n  z-index: 10;\n  display: flex;\n  flex-direction: column;\n  transform: translateX(100%);\n  transition: transform 0.3s ease;\n}\n\n.journy-settings-panel-open {\n  transform: translateX(0);\n}\n\n.journy-settings-panel-closed {\n  transform: translateX(100%);\n}\n\n.journy-settings-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: #f9fafb;\n  border-bottom: 1px solid #e5e7eb;\n  flex-shrink: 0;\n}\n\n.journy-settings-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: #111827;\n}\n\n.journy-settings-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-settings-close:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n.journy-settings-body {\n  padding: 16px;\n  overflow-y: auto;\n  flex: 1;\n}\n\n.journy-settings-item {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 0;\n  border-bottom: 1px solid #f3f4f6;\n}\n\n.journy-settings-item:last-child {\n  border-bottom: none;\n}\n\n.journy-settings-label {\n  font-size: 13px;\n  font-weight: 500;\n  color: #374151;\n}\n\n.journy-settings-select {\n  padding: 6px 10px;\n  border: 1px solid #d1d5db;\n  border-radius: 6px;\n  font-size: 13px;\n  color: #374151;\n  background: white;\n  cursor: pointer;\n  outline: none;\n  transition: border-color 0.2s;\n}\n\n.journy-settings-select:focus {\n  border-color: #3b82f6;\n}\n\n.journy-settings-toggle {\n  position: relative;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  border: none;\n  background: #d1d5db;\n  cursor: pointer;\n  padding: 0;\n  transition: background-color 0.2s;\n  flex-shrink: 0;\n}\n\n.journy-settings-toggle-on {\n  background: #3b82f6;\n}\n\n.journy-settings-toggle-knob {\n  position: absolute;\n  top: 2px;\n  left: 2px;\n  width: 18px;\n  height: 18px;\n  border-radius: 50%;\n  background: white;\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);\n  transition: transform 0.2s;\n}\n\n.journy-settings-toggle-on .journy-settings-toggle-knob {\n  transform: translateX(18px);\n}\n\n.journy-settings-item-vertical {\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 6px;\n}\n\n.journy-settings-input {\n  width: 100%;\n  padding: 6px 10px;\n  border: 1px solid #d1d5db;\n  border-radius: 6px;\n  font-size: 13px;\n  color: #374151;\n  background: white;\n  outline: none;\n  transition: border-color 0.2s;\n  box-sizing: border-box;\n}\n\n.journy-settings-input:focus {\n  border-color: #3b82f6;\n}\n\n.journy-settings-input::placeholder {\n  color: #9ca3af;\n}\n\n.journy-settings-value {\n  font-size: 13px;\n  color: #6b7280;\n  font-weight: 400;\n  max-width: 60%;\n  text-align: right;\n  word-break: break-all;\n}\n\n.journy-message-widget-empty {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: #9ca3af;\n  font-size: 14px;\n  flex: 1;\n  min-height: 80px;\n}\n\n.journy-settings-advanced-btn {\n  background: none;\n  border: none;\n  font-size: 13px;\n  font-weight: 500;\n  color: #6b7280;\n  cursor: pointer;\n  padding: 0;\n  transition: color 0.2s;\n}\n\n.journy-settings-advanced-btn:hover {\n  color: #374151;\n}\n\n.journy-message-widget-settings-btn {\n  background: none;\n  border: none;\n  font-size: 16px;\n  line-height: 1;\n  cursor: pointer;\n  color: #6b7280;\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-settings-btn:hover {\n  background-color: #e5e7eb;\n  color: #374151;\n}\n\n/* Responsive design */\n@media (max-width: 640px) {\n  .journy-message-widget {\n    min-width: calc(100vw - 32px);\n    max-width: calc(100vw - 32px);\n    left: 16px !important;\n    right: 16px !important;\n  }\n\n  .journy-message-popup {\n    width: 95%;\n    padding: 20px;\n  }\n\n  .journy-message-title {\n    font-size: 18px;\n  }\n\n  .journy-message-content {\n    font-size: 14px;\n  }\n\n  .journy-message-actions {\n    flex-direction: column;\n  }\n\n  .journy-message-action {\n    width: 100%;\n  }\n}\n";
+    var defaultStyles = "/* ============================================================\n   Journy Widget — Design Tokens\n   Brand palette derived from the Journy logo:\n     navy  (#102a43) — dark background / header\n     blue  (#528afa) — primary / ring\n     orange(#f2994a) — accent / center (compensating to blue)\n   ============================================================ */\n.journy-message-widget {\n  /* --- Brand --- */\n  --journy-navy:          #102a43;\n  --journy-blue:          #528afa;\n  --journy-blue-hover:    #3b6fd4;\n  --journy-orange:        #f2994a;\n  --journy-orange-hover:  #e07f2a;\n\n  /* --- Surface --- */\n  --journy-surface:       #ffffff;\n  --journy-surface-alt:   #f9fafb;\n  --journy-surface-hover: #f3f4f6;\n\n  /* --- Border --- */\n  --journy-border:        #e5e7eb;\n  --journy-border-strong: #d1d5db;\n\n  /* --- Text --- */\n  --journy-text-primary:  #111827;\n  --journy-text-secondary:#374151;\n  --journy-text-muted:    #6b7280;\n  --journy-text-subtle:   #9ca3af;\n\n  /* --- On-header (text/icons over navy bg) --- */\n  --journy-on-header:           #ffffff;\n  --journy-on-header-muted:     rgba(255, 255, 255, 0.7);\n  --journy-on-header-btn:       rgba(255, 255, 255, 0.85);\n  --journy-on-header-btn-hover: rgba(255, 255, 255, 0.2);\n\n  /* --- Semantic --- */\n  --journy-info:    #528afa;\n  --journy-success: #10b981;\n  --journy-warning: #f59e0b;\n  --journy-error:   #ef4444;\n  --journy-viewed:  #6b7280;\n\n  /* --- Shadow / Overlay --- */\n  --journy-shadow-sm:  0 4px 20px rgba(0, 0, 0, 0.15);\n  --journy-shadow-md:  0 4px 24px rgba(0, 0, 0, 0.2);\n  --journy-overlay-bg: rgba(0, 0, 0, 0.5);\n}\n\n/* ============================================================\n   Widget Container\n   ============================================================ */\n.journy-message-widget {\n  position: fixed;\n  z-index: 10000;\n  background: var(--journy-surface);\n  border-radius: 12px;\n  box-shadow: var(--journy-shadow-sm);\n  overflow: hidden;\n  user-select: none;\n  transform-origin: bottom right;\n}\n\n.journy-message-widget.journy-message-widget-dragging {\n  cursor: grabbing;\n  transition: none;\n  z-index: 10001;\n}\n\n.journy-message-widget.journy-message-widget-expanded {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n}\n\n.journy-message-widget.journy-message-widget-resizing {\n  transition: none;\n}\n\n/* Expand/collapse: height and top are animated via inline transition so bottom-right stays fixed */\n\n/* ============================================================\n   Widget Header\n   ============================================================ */\n.journy-message-widget-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: var(--journy-navy);\n  border-bottom: none;\n  user-select: none;\n  cursor: grab;\n}\n\n.journy-message-widget-header:active {\n  cursor: grabbing;\n}\n\n.journy-message-widget-drag-handle {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 4px 8px;\n  margin-right: 8px;\n  cursor: grab;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-drag-handle svg {\n  display: block;\n}\n\n.journy-message-widget-header-content {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  flex: 1;\n  min-width: 0;\n  cursor: inherit;\n}\n\n.journy-message-widget-collapsed .journy-message-widget-header-content {\n  cursor: pointer;\n}\n\n/* ============================================================\n   Collapsed pill mode\n   ============================================================ */\n.journy-message-widget-collapsed {\n  border-radius: 24px;\n  background: var(--journy-navy);\n}\n\n.journy-message-widget-header--pill {\n  background: var(--journy-navy);\n  padding: 6px 6px 6px 10px;\n  gap: 6px;\n  border-bottom: none;\n}\n\n.journy-message-widget-header--pill .journy-message-widget-drag-handle {\n  padding: 2px 4px;\n  margin-right: 0;\n}\n\n.journy-message-widget-logo-wrapper {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-logo-badge {\n  position: absolute;\n  top: -5px;\n  right: -5px;\n  min-width: 15px;\n  height: 15px;\n  background: var(--journy-orange);\n  color: #fff;\n  border-radius: 8px;\n  font-size: 9px;\n  font-weight: 700;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0 3px;\n  border: 1.5px solid var(--journy-navy);\n  pointer-events: none;\n}\n\n.journy-message-widget-pill-title {\n  font-size: 13px;\n  font-weight: 600;\n  color: var(--journy-on-header);\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.journy-message-widget-avatar-slot {\n  width: 28px;\n  height: 28px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-close--pill {\n  opacity: 0;\n  color: var(--journy-on-header-btn) !important;\n  background: transparent !important;\n  border-radius: 50% !important;\n  width: 26px !important;\n  height: 26px !important;\n  font-size: 18px !important;\n  transition: opacity 0.2s, background-color 0.2s !important;\n}\n\n.journy-message-widget-collapsed:hover .journy-message-widget-close--pill {\n  opacity: 1;\n}\n\n.journy-message-widget-close--pill:hover {\n  background: var(--journy-on-header-btn-hover) !important;\n  color: var(--journy-on-header) !important;\n}\n\n.journy-message-widget-badge {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-width: 24px;\n  height: 24px;\n  padding: 0 8px;\n  background: var(--journy-orange);\n  color: var(--journy-on-header);\n  border-radius: 12px;\n  font-size: 12px;\n  font-weight: 600;\n  transition: background-color 0.2s;\n}\n\n.journy-message-widget-badge:hover {\n  background: var(--journy-blue);\n}\n\n.journy-message-widget-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: var(--journy-on-header);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.journy-message-widget-read-count {\n  font-size: 12px;\n  color: var(--journy-on-header-muted);\n  font-weight: 400;\n}\n\n.journy-message-widget-controls {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.journy-message-widget-toggle,\n.journy-message-widget-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-on-header-btn);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-toggle:hover,\n.journy-message-widget-close:hover {\n  background-color: var(--journy-on-header-btn-hover);\n  color: var(--journy-on-header);\n}\n\n.journy-message-widget-settings-btn {\n  background: none;\n  border: none;\n  font-size: 16px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-on-header-btn);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-settings-btn:hover {\n  background-color: var(--journy-on-header-btn-hover);\n  color: var(--journy-on-header);\n}\n\n/* ============================================================\n   Widget Content\n   ============================================================ */\n.journy-message-widget-content {\n  padding: 16px;\n  flex: 1;\n  overflow-y: auto;\n  overflow-x: hidden;\n  min-height: 0;\n}\n\n.journy-message-widget-content--single {\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message {\n  flex: 1;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message .journy-message-content {\n  flex: 1;\n  min-height: 0;\n  overflow: hidden;\n}\n\n/* ============================================================\n   Resize Handle\n   ============================================================ */\n.journy-message-widget-resize-handle {\n  position: absolute;\n  bottom: 0;\n  right: 0;\n  width: 20px;\n  height: 20px;\n  cursor: nwse-resize;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, var(--journy-border) 40%, var(--journy-border) 100%);\n  z-index: 10;\n  transition: background 0.2s;\n}\n\n.journy-message-widget-resize-handle:hover {\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, var(--journy-border-strong) 40%, var(--journy-border-strong) 100%);\n}\n\n.journy-message-widget-resize-handle svg {\n  width: 12px;\n  height: 12px;\n  opacity: 0.6;\n}\n\n.journy-message-widget-resize-handle:hover svg {\n  opacity: 1;\n}\n\n/* ============================================================\n   Messages\n   ============================================================ */\n.journy-message-widget-message {\n  padding: 0;\n  position: relative;\n  transition: border-color 0.6s ease;\n}\n\n/* In single mode, constrain message content to fill available space with overflow hidden */\n.journy-message-widget-content--single .journy-message-widget-message {\n  overflow: hidden;\n}\n\n.journy-message-widget-message-close {\n  position: absolute;\n  top: 4px;\n  right: 4px;\n  width: 24px;\n  height: 24px;\n  padding: 0;\n  border: none;\n  background: transparent;\n  color: var(--journy-text-muted);\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transition: background-color 0.2s, color 0.2s;\n  z-index: 1;\n}\n\n.journy-message-widget-message-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-widget-message:has(.journy-message-widget-message-close) .journy-message-content {\n  padding-right: 28px;\n}\n\n.journy-message-widget-nav {\n  background: none;\n  border: none;\n  font-size: 16px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 2px 6px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 24px;\n  height: 24px;\n}\n\n.journy-message-widget-nav:hover:not(:disabled) {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-widget-nav:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.journy-message-widget-message-separated {\n  margin-bottom: 24px;\n  padding-bottom: 24px;\n  border-bottom: 1px solid var(--journy-border);\n}\n\n.journy-message-widget-message-count {\n  font-size: 12px;\n  color: var(--journy-on-header-muted);\n  font-weight: 400;\n  margin-left: 8px;\n  white-space: nowrap;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-position {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  padding: 4px 12px;\n  font-size: 11px;\n  color: var(--journy-text-subtle);\n  font-weight: 500;\n  flex-shrink: 0;\n  border-top: 1px solid var(--journy-border);\n}\n\n.journy-message-widget-position-text {\n  min-width: 32px;\n  text-align: center;\n}\n\n.journy-message-widget-message.journy-message-info {\n  border-left: 4px solid var(--journy-info);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-success {\n  border-left: 4px solid var(--journy-success);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-warning {\n  border-left: 4px solid var(--journy-warning);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-error {\n  border-left: 4px solid var(--journy-error);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-viewed {\n  border-left: 4px solid var(--journy-viewed);\n  padding-left: 12px;\n}\n\n/* ============================================================\n   Message Modal (80vw × 60vh)\n   ============================================================ */\n.journy-message-modal-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: var(--journy-overlay-bg);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10002;\n  padding: 20px;\n}\n\n.journy-message-modal {\n  width: 80vw;\n  max-width: 80vw;\n  height: 60vh;\n  max-height: 60vh;\n  background: var(--journy-surface);\n  border-radius: 12px;\n  box-shadow: var(--journy-shadow-md);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  position: relative;\n}\n\n.journy-message-modal-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 16px 24px;\n  background: var(--journy-surface-alt);\n  border-bottom: 1px solid var(--journy-border);\n  flex-shrink: 0;\n}\n\n.journy-message-modal-title {\n  font-size: 18px;\n  font-weight: 600;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-modal-close {\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-modal-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-modal .journy-message-widget-message {\n  padding: 24px;\n  overflow-y: auto;\n  flex: 1;\n  min-height: 0;\n}\n\n/* ============================================================\n   Timestamp\n   ============================================================ */\n/* Overlay at the bottom of each message card (single mode only) */\n.journy-message-widget-content--single .journy-message-timestamp {\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n  padding: 32px 12px 8px 12px;\n  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,1) 60%);\n  font-size: 12px;\n  color: var(--journy-text-muted);\n  line-height: 1.4;\n  pointer-events: none;\n  z-index: 2;\n}\n\n/* Flows naturally in list mode */\n.journy-message-widget-content:not(.journy-message-widget-content--single) .journy-message-timestamp {\n  font-size: 12px;\n  color: var(--journy-text-muted);\n  line-height: 1.4;\n  margin-top: 6px;\n}\n\n.journy-message-content-clickable {\n  cursor: pointer;\n}\n\n.journy-message-content-clickable:hover {\n  opacity: 0.95;\n}\n\n/* ============================================================\n   Legacy Modal Overlay (kept for backward compatibility)\n   ============================================================ */\n.journy-message-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: var(--journy-overlay-bg);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10000;\n  opacity: 0;\n  transition: opacity 0.3s ease-in-out;\n  pointer-events: none;\n}\n\n.journy-message-overlay.journy-message-visible {\n  opacity: 1;\n  pointer-events: all;\n}\n\n.journy-message-popup {\n  background: var(--journy-surface);\n  border-radius: 8px;\n  padding: 24px;\n  max-width: 500px;\n  width: 90%;\n  max-height: 80vh;\n  overflow-y: auto;\n  box-shadow: var(--journy-shadow-sm);\n  position: relative;\n  transform: scale(0.9);\n  transition: transform 0.3s ease-in-out, border-color 0.6s ease;\n}\n\n.journy-message-overlay.journy-message-visible .journy-message-popup {\n  transform: scale(1);\n}\n\n.journy-message-popup.journy-message-info    { border-top: 4px solid var(--journy-info); }\n.journy-message-popup.journy-message-success { border-top: 4px solid var(--journy-success); }\n.journy-message-popup.journy-message-warning { border-top: 4px solid var(--journy-warning); }\n.journy-message-popup.journy-message-error   { border-top: 4px solid var(--journy-error); }\n.journy-message-popup.journy-message-viewed  { border-top: 4px solid var(--journy-viewed); }\n\n.journy-message-close {\n  position: absolute;\n  top: 12px;\n  right: 12px;\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-close:hover {\n  background-color: var(--journy-surface-hover);\n  color: var(--journy-text-secondary);\n}\n\n/* ============================================================\n   Message Content\n   ============================================================ */\n.journy-message-title {\n  font-size: 20px;\n  font-weight: 600;\n  margin-bottom: 12px;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-content {\n  font-size: 16px;\n  line-height: 1.6;\n  color: var(--journy-text-secondary);\n  margin-bottom: 16px;\n}\n\n.journy-message-content a {\n  color: var(--journy-blue);\n  text-decoration: underline;\n  transition: color 0.2s;\n}\n\n.journy-message-content a:hover {\n  color: var(--journy-blue-hover);\n}\n\n.journy-message-content p {\n  margin: 0 0 12px 0;\n}\n\n.journy-message-content p:last-child {\n  margin-bottom: 0;\n}\n\n.journy-message-content ul,\n.journy-message-content ol {\n  margin: 12px 0;\n  padding-left: 24px;\n}\n\n.journy-message-content li {\n  margin-bottom: 8px;\n}\n\n/* Headings */\n.journy-message-content h1,\n.journy-message-content h2,\n.journy-message-content h3,\n.journy-message-content h4,\n.journy-message-content h5,\n.journy-message-content h6 {\n  margin: 16px 0 12px 0;\n  font-weight: 600;\n  line-height: 1.3;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-content h1 { font-size: 24px; }\n.journy-message-content h2 { font-size: 20px; }\n.journy-message-content h3 { font-size: 18px; }\n.journy-message-content h4 { font-size: 16px; }\n.journy-message-content h5,\n.journy-message-content h6 { font-size: 14px; }\n\n/* Code */\n.journy-message-content code {\n  background-color: var(--journy-surface-hover);\n  color: var(--journy-error);\n  padding: 2px 6px;\n  border-radius: 4px;\n  font-size: 0.9em;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n}\n\n.journy-message-content pre {\n  background-color: var(--journy-navy);\n  color: var(--journy-surface-alt);\n  padding: 16px;\n  border-radius: 8px;\n  overflow-x: auto;\n  margin: 12px 0;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n  font-size: 14px;\n  line-height: 1.5;\n}\n\n.journy-message-content pre code {\n  background-color: transparent;\n  color: inherit;\n  padding: 0;\n  border-radius: 0;\n  font-size: inherit;\n}\n\n/* Text formatting */\n.journy-message-content u              { text-decoration: underline; }\n.journy-message-content s,\n.journy-message-content strike,\n.journy-message-content del            { text-decoration: line-through; }\n.journy-message-content strong         { font-weight: 600; }\n.journy-message-content em             { font-style: italic; }\n\n/* Blockquotes */\n.journy-message-content blockquote {\n  border-left: 4px solid var(--journy-border);\n  padding-left: 16px;\n  margin: 12px 0;\n  color: var(--journy-text-muted);\n  font-style: italic;\n}\n\n/* Tables */\n.journy-message-content table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 12px 0;\n}\n\n.journy-message-content th,\n.journy-message-content td {\n  border: 1px solid var(--journy-border);\n  padding: 8px 12px;\n  text-align: left;\n}\n\n.journy-message-content th {\n  background-color: var(--journy-surface-alt);\n  font-weight: 600;\n}\n\n/* Horizontal rule */\n.journy-message-content hr {\n  border: none;\n  border-top: 1px solid var(--journy-border);\n  margin: 16px 0;\n}\n\n/* ============================================================\n   Actions\n   ============================================================ */\n.journy-message-actions {\n  display: flex;\n  gap: 12px;\n  margin-top: 20px;\n  flex-wrap: wrap;\n}\n\n.journy-message-action {\n  padding: 10px 20px;\n  border-radius: 6px;\n  font-size: 14px;\n  font-weight: 500;\n  cursor: pointer;\n  border: none;\n  transition: all 0.2s;\n}\n\n.journy-message-action-primary {\n  background-color: var(--journy-blue);\n  color: var(--journy-on-header);\n}\n\n.journy-message-action-primary:hover {\n  background-color: var(--journy-blue-hover);\n}\n\n.journy-message-action-secondary {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-action-secondary:hover {\n  background-color: var(--journy-border-strong);\n}\n\n.journy-message-action-link {\n  background: none;\n  color: var(--journy-blue);\n  text-decoration: underline;\n  padding: 10px 0;\n}\n\n.journy-message-action-link:hover {\n  color: var(--journy-blue-hover);\n}\n\n/* ============================================================\n   Settings Panel\n   ============================================================ */\n.journy-settings-panel {\n  position: absolute;\n  top: 0;\n  right: 0;\n  bottom: 0;\n  width: 100%;\n  background: var(--journy-surface);\n  z-index: 10;\n  display: flex;\n  flex-direction: column;\n  transform: translateX(100%);\n  transition: transform 0.3s ease;\n}\n\n.journy-settings-panel-open  { transform: translateX(0); }\n.journy-settings-panel-closed { transform: translateX(100%); }\n\n.journy-settings-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: var(--journy-surface-alt);\n  border-bottom: 1px solid var(--journy-border);\n  flex-shrink: 0;\n}\n\n.journy-settings-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: var(--journy-text-primary);\n}\n\n.journy-settings-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-settings-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-settings-body {\n  padding: 16px;\n  overflow-y: auto;\n  flex: 1;\n}\n\n.journy-settings-item {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 0;\n  border-bottom: 1px solid var(--journy-surface-hover);\n}\n\n.journy-settings-item:last-child {\n  border-bottom: none;\n}\n\n.journy-settings-label {\n  font-size: 13px;\n  font-weight: 500;\n  color: var(--journy-text-secondary);\n}\n\n.journy-settings-select {\n  padding: 6px 10px;\n  border: 1px solid var(--journy-border-strong);\n  border-radius: 6px;\n  font-size: 13px;\n  color: var(--journy-text-secondary);\n  background: var(--journy-surface);\n  cursor: pointer;\n  outline: none;\n  transition: border-color 0.2s;\n}\n\n.journy-settings-select:focus {\n  border-color: var(--journy-blue);\n}\n\n.journy-settings-toggle {\n  position: relative;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  border: none;\n  background: var(--journy-border-strong);\n  cursor: pointer;\n  padding: 0;\n  transition: background-color 0.2s;\n  flex-shrink: 0;\n}\n\n.journy-settings-toggle-on {\n  background: var(--journy-blue);\n}\n\n.journy-settings-toggle-knob {\n  position: absolute;\n  top: 2px;\n  left: 2px;\n  width: 18px;\n  height: 18px;\n  border-radius: 50%;\n  background: var(--journy-surface);\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);\n  transition: transform 0.2s;\n}\n\n.journy-settings-toggle-on .journy-settings-toggle-knob {\n  transform: translateX(18px);\n}\n\n.journy-settings-item-vertical {\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 6px;\n}\n\n.journy-settings-input {\n  width: 100%;\n  padding: 6px 10px;\n  border: 1px solid var(--journy-border-strong);\n  border-radius: 6px;\n  font-size: 13px;\n  color: var(--journy-text-secondary);\n  background: var(--journy-surface);\n  outline: none;\n  transition: border-color 0.2s;\n  box-sizing: border-box;\n}\n\n.journy-settings-input:focus {\n  border-color: var(--journy-blue);\n}\n\n.journy-settings-input::placeholder {\n  color: var(--journy-text-subtle);\n}\n\n.journy-settings-value {\n  font-size: 13px;\n  color: var(--journy-text-muted);\n  font-weight: 400;\n  max-width: 60%;\n  text-align: right;\n  word-break: break-all;\n}\n\n.journy-message-widget-empty {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: var(--journy-text-subtle);\n  font-size: 14px;\n  flex: 1;\n  min-height: 80px;\n}\n\n.journy-settings-advanced-btn {\n  background: none;\n  border: none;\n  font-size: 13px;\n  font-weight: 500;\n  color: var(--journy-text-muted);\n  cursor: pointer;\n  padding: 0;\n  transition: color 0.2s;\n}\n\n.journy-settings-advanced-btn:hover {\n  color: var(--journy-text-secondary);\n}\n\n/* ============================================================\n   Responsive\n   ============================================================ */\n@media (max-width: 640px) {\n  .journy-message-widget {\n    min-width: calc(100vw - 32px);\n    max-width: calc(100vw - 32px);\n    left: 16px !important;\n    right: 16px !important;\n  }\n\n  .journy-message-popup {\n    width: 95%;\n    padding: 20px;\n  }\n\n  .journy-message-title {\n    font-size: 18px;\n  }\n\n  .journy-message-content {\n    font-size: 14px;\n  }\n\n  .journy-message-actions {\n    flex-direction: column;\n  }\n\n  .journy-message-action {\n    width: 100%;\n  }\n}\n";
+
+    /**
+     * Builds a generic track batch item for any SDK event type.
+     */
+    function buildTrackEventPayload(scope, identity, event, properties) {
+        const base = {
+            type: "track",
+            event: event,
+            properties,
+        };
+        if (scope === "account" && identity.accountId) {
+            return {
+                ...base,
+                anonymousId: identity.accountId,
+                context: { groupId: identity.accountId },
+            };
+        }
+        if (identity.userId) {
+            return { ...base, userId: identity.userId };
+        }
+        if (identity.anonymousId) {
+            return { ...base, anonymousId: identity.anonymousId };
+        }
+        throw new Error("User scope requires userId or anonymousId; account scope requires accountId.");
+    }
+
+    const SEND_ANALYTICS_PATH = "/frontend/v1/b";
+    class AnalyticsClient {
+        constructor(config) {
+            this.config = config;
+            this.analyticsHost = config.apiEndpoint || DEFAULT_API_ENDPOINT;
+        }
+        get trackIdentity() {
+            return {
+                userId: this.config.userId,
+                accountId: this.config.accountId,
+            };
+        }
+        /**
+         * General-purpose method: send an array of SDK events in a single batch.
+         */
+        async trackEvents(events) {
+            if (events.length === 0)
+                return true;
+            const batch = events.map(({ event, properties }) => buildTrackEventPayload(this.config.entityType, this.trackIdentity, event, properties));
+            await fetch(this.analyticsHost + SEND_ANALYTICS_PATH, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ writeKey: this.config.writeKey, batch }),
+            });
+            return true;
+        }
+        /**
+         * Convenience method for "message received" events. Calls trackEvents internally.
+         */
+        async sendAnalyticsEvents(messageIds) {
+            return this.trackEvents(messageIds.map(messageId => ({
+                event: SDKEventType.MessageReceived,
+                properties: { messageId },
+            })));
+        }
+    }
+
+    function createDebugMessages(entityType) {
+        const now = new Date().toISOString();
+        const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+        return [
+            {
+                id: 'debug-msg-1',
+                appId: 'debug',
+                status: 'sent',
+                scope: entityType,
+                message: '<h3>Please read you lorem:</h3><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Proin tortor purus platea sit eu id nisi litora libero. Neque vulputate consequat ac amet augue blandit maximus aliquet congue. Pharetra vestibulum posuere ornare faucibus fusce dictumst orci aenean eu facilisis ut volutpat commodo senectus purus himenaeos fames primis convallis nisi.</p>',
+                received: false,
+                expired: false,
+                createdAt: now,
+            },
+            {
+                id: 'debug-msg-2',
+                appId: 'debug',
+                status: 'sent',
+                scope: entityType,
+                message: '<h3>Phasellus fermentum malesuada phasellus netus dictum aenean placerat egestas amet. Ornare taciti semper dolor tristique morbi. Sem leo tincidunt aliquet semper eu lectus scelerisque quis. Sagittis vivamus mollis nisi mollis enim fermentum laoreet.</h3><p>Hi ,</p><p>Curabitur semper venenatis lectus viverra ex dictumst nulla maximus. Primis elementum conubia feugiat venenatis dolor augue ac blandit nullam ac phasellus turpis feugiat mollis. Duis lectus porta mattis imperdiet vivamus Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Proin tortor purus platea sit accumsan nec elit eras fuctus primis ipsum gravida class conguet eu id nisi litora libero. Neque vulputate consequat ac amet augue blandit maximus aliquet congue. Pharetra vestibulum posuere ornare faucibus fusce dictumst orci aenean eu facilisis ut volutpat commodo senectus purus himenaeos fames primis convallis nisi.</p>',
+                received: false,
+                expired: false,
+                createdAt: fiveMinAgo,
+            },
+            {
+                id: 'debug-msg-3',
+                appId: 'debug',
+                status: 'sent',
+                scope: entityType,
+                message: '<h3>Phasellus fermentum malesuada phasellus netus dictum aenean placerat egestas amet. Ornare taciti semper dolor tristique morbi. Sem leo tincidunt aliquet semper eu lectus</h3><p>Hi ,</p><p>Curabitur semper venenatis lectus viverra ex dictumst nulla maximus. Primis elementum conubia feugiat venenatis dolor augue ac blandit nullam ac phasellus turpis feugiat mollis.</p>',
+                received: false,
+                expired: false,
+                createdAt: fiveMinAgo,
+            },
+            {
+                id: 'debug-msg-4',
+                appId: 'debug',
+                status: 'sent',
+                scope: entityType,
+                message: '<h3>Second Message</h3><p>Use this to test <a href="https://example.com">links</a>, navigation, and layout.</p>',
+                received: true,
+                expired: false,
+                createdAt: fiveMinAgo,
+            },
+        ];
+    }
 
     function useMessagingStore(store) {
         const [state, setState] = React.useState(() => store.getState());
@@ -2022,32 +2129,6 @@
                             React__namespace.createElement("span", { className: "journy-settings-value" }, configInfo.accountId))))))))));
     };
 
-    const ICON_SIZE$1 = 12;
-    const DOT_FIRST = 2;
-    const DOT_SECOND = 6;
-    const DOT_THIRD = 10;
-    const DOT_RADIUS = 1;
-    const DragHandle = ({ onMouseDown, title = 'Drag to move', className = 'journy-message-widget-drag-handle', }) => (React__namespace.createElement("div", { className: className, onMouseDown: onMouseDown, title: title },
-        React__namespace.createElement("svg", { width: ICON_SIZE$1, height: ICON_SIZE$1, viewBox: `0 0 ${ICON_SIZE$1} ${ICON_SIZE$1}`, fill: "none", xmlns: "http://www.w3.org/2000/svg" },
-            React__namespace.createElement("circle", { cx: DOT_FIRST, cy: DOT_FIRST, r: DOT_RADIUS, fill: "#9ca3af" }),
-            React__namespace.createElement("circle", { cx: DOT_SECOND, cy: DOT_FIRST, r: DOT_RADIUS, fill: "#9ca3af" }),
-            React__namespace.createElement("circle", { cx: DOT_THIRD, cy: DOT_FIRST, r: DOT_RADIUS, fill: "#9ca3af" }),
-            React__namespace.createElement("circle", { cx: DOT_FIRST, cy: DOT_SECOND, r: DOT_RADIUS, fill: "#9ca3af" }),
-            React__namespace.createElement("circle", { cx: DOT_SECOND, cy: DOT_SECOND, r: DOT_RADIUS, fill: "#9ca3af" }),
-            React__namespace.createElement("circle", { cx: DOT_THIRD, cy: DOT_SECOND, r: DOT_RADIUS, fill: "#9ca3af" }),
-            React__namespace.createElement("circle", { cx: DOT_FIRST, cy: DOT_THIRD, r: DOT_RADIUS, fill: "#9ca3af" }),
-            React__namespace.createElement("circle", { cx: DOT_SECOND, cy: DOT_THIRD, r: DOT_RADIUS, fill: "#9ca3af" }),
-            React__namespace.createElement("circle", { cx: DOT_THIRD, cy: DOT_THIRD, r: DOT_RADIUS, fill: "#9ca3af" }))));
-
-    const ICON_SIZE = 16;
-    const STROKE_WIDTH = 1.5;
-    /** Diagonal from top-right to bottom-left (resize corner). */
-    const PATH_MAIN = 'M16 0 L0 16';
-    const PATH_INNER = 'M13 3 L3 13';
-    const ResizeHandle = ({ onMouseDown, title = 'Resize', className = 'journy-message-widget-resize-handle', }) => (React__namespace.createElement("div", { className: className, onMouseDown: onMouseDown, title: title },
-        React__namespace.createElement("svg", { width: ICON_SIZE, height: ICON_SIZE, viewBox: `0 0 ${ICON_SIZE} ${ICON_SIZE}`, fill: "none", xmlns: "http://www.w3.org/2000/svg" },
-            React__namespace.createElement("path", { d: `${PATH_MAIN} ${PATH_INNER}`, stroke: "#9ca3af", strokeWidth: STROKE_WIDTH, strokeLinecap: "round" }))));
-
     const defaultContext = {
         targetWindow: typeof window !== 'undefined' ? window : null,
         targetDocument: typeof document !== 'undefined' ? document : null,
@@ -2059,8 +2140,8 @@
         return React__namespace.useContext(RenderCtx);
     }
 
-    const COLLAPSED_WIDTH = 300;
-    const COLLAPSED_HEIGHT = 80;
+    const COLLAPSED_WIDTH = 160;
+    const COLLAPSED_HEIGHT = 44;
     const WIDGET_MODE_EXPANDED_WIDTH = 340;
     const WIDGET_MODE_EXPANDED_HEIGHT = 280;
     const LIST_MODE_DEFAULT_WIDTH = 600;
@@ -2069,21 +2150,15 @@
     const VIEWPORT_PADDING = 40;
     const MIN_LIST_WIDTH = 300;
     const MIN_LIST_HEIGHT = 200;
-    const MIN_POSITION_THRESHOLD = 0;
     function useWidgetDragResize({ isCollapsed, isListMode }) {
         const { targetWindow, targetDocument } = useRenderContext();
-        const [position, setPosition] = React.useState(() => {
-            const saved = getItem('widget_position');
+        // Collapsed pill position — persisted independently, defaults to bottom-right corner
+        const [collapsedPosition, setCollapsedPosition] = React.useState(() => {
+            const saved = getItem('widget_collapsed_position');
             if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
                 return {
                     left: Math.max(0, Math.min(saved.left, targetWindow.innerWidth - COLLAPSED_WIDTH)),
                     top: Math.max(0, Math.min(saved.top, targetWindow.innerHeight - COLLAPSED_HEIGHT)),
-                };
-            }
-            if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
-                return {
-                    left: Math.max(0, saved.x - COLLAPSED_WIDTH),
-                    top: Math.max(0, saved.y - COLLAPSED_HEIGHT),
                 };
             }
             return {
@@ -2091,7 +2166,36 @@
                 top: targetWindow.innerHeight - DEFAULT_EDGE_OFFSET - COLLAPSED_HEIGHT,
             };
         });
-        const [size, setSize] = React.useState({ width: LIST_MODE_DEFAULT_WIDTH, height: LIST_MODE_DEFAULT_HEIGHT });
+        const [size, setSize] = React.useState(() => {
+            const savedSize = getItem('widget_size');
+            if (savedSize) {
+                return {
+                    width: Math.max(MIN_LIST_WIDTH, Math.min(savedSize.width, targetWindow.innerWidth - VIEWPORT_PADDING)),
+                    height: Math.max(MIN_LIST_HEIGHT, Math.min(savedSize.height, targetWindow.innerHeight - VIEWPORT_PADDING)),
+                };
+            }
+            return { width: LIST_MODE_DEFAULT_WIDTH, height: LIST_MODE_DEFAULT_HEIGHT };
+        });
+        // Compute expanded dimensions here so expandedPosition initializer can use them
+        const expandedWidth = isListMode ? size.width : WIDGET_MODE_EXPANDED_WIDTH;
+        const expandedHeight = isListMode ? size.height : WIDGET_MODE_EXPANDED_HEIGHT;
+        // Expanded widget position — persisted independently, defaults to anchored off the collapsed pill
+        const [expandedPosition, setExpandedPosition] = React.useState(() => {
+            const saved = getItem('widget_position');
+            if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+                return {
+                    left: Math.max(0, Math.min(saved.left, targetWindow.innerWidth - expandedWidth)),
+                    top: Math.max(0, Math.min(saved.top, targetWindow.innerHeight - expandedHeight)),
+                };
+            }
+            // Anchor bottom-right of expanded widget to bottom-right of collapsed pill
+            const right = collapsedPosition.left + COLLAPSED_WIDTH;
+            const bottom = collapsedPosition.top + COLLAPSED_HEIGHT;
+            return {
+                left: Math.max(0, Math.min(right - expandedWidth, targetWindow.innerWidth - expandedWidth)),
+                top: Math.max(0, Math.min(bottom - expandedHeight, targetWindow.innerHeight - expandedHeight)),
+            };
+        });
         const [isDragging, setIsDragging] = React.useState(false);
         const [isResizing, setIsResizing] = React.useState(false);
         const [dragOffset, setDragOffset] = React.useState({ x: 0, y: 0 });
@@ -2099,59 +2203,63 @@
         const widgetRef = React.useRef(null);
         const hasDraggedThisSession = React.useRef(false);
         const justFinishedDragging = React.useRef(false);
-        const currentWidth = isCollapsed
-            ? COLLAPSED_WIDTH
-            : isListMode
-                ? size.width
-                : WIDGET_MODE_EXPANDED_WIDTH;
-        const currentHeight = isCollapsed
-            ? COLLAPSED_HEIGHT
-            : isListMode
-                ? size.height
-                : WIDGET_MODE_EXPANDED_HEIGHT;
-        // Load saved size from localStorage on mount
+        // Keep a ref so the drag mousemove handler always sees the current collapsed state
+        const isCollapsedRef = React.useRef(isCollapsed);
         React.useEffect(() => {
-            const savedSize = getItem('widget_size');
-            if (savedSize) {
-                setSize({
-                    width: Math.max(MIN_LIST_WIDTH, Math.min(savedSize.width, targetWindow.innerWidth - VIEWPORT_PADDING)),
-                    height: Math.max(MIN_LIST_HEIGHT, Math.min(savedSize.height, targetWindow.innerHeight - VIEWPORT_PADDING)),
-                });
-            }
-        }, []);
-        // Clamp position so widget stays on screen
+            isCollapsedRef.current = isCollapsed;
+        }, [isCollapsed]);
+        const currentWidth = isCollapsed ? COLLAPSED_WIDTH : expandedWidth;
+        const currentHeight = isCollapsed ? COLLAPSED_HEIGHT : expandedHeight;
+        // The position exposed to the widget: collapsed pill pos or expanded widget pos
+        const position = isCollapsed ? collapsedPosition : expandedPosition;
+        // Clamp expanded position when expanded dimensions change
         React.useEffect(() => {
-            setPosition(prev => ({
-                left: Math.max(0, Math.min(prev.left, targetWindow.innerWidth - currentWidth)),
-                top: Math.max(0, Math.min(prev.top, targetWindow.innerHeight - currentHeight)),
+            setExpandedPosition(prev => ({
+                left: Math.max(0, Math.min(prev.left, targetWindow.innerWidth - expandedWidth)),
+                top: Math.max(0, Math.min(prev.top, targetWindow.innerHeight - expandedHeight)),
             }));
-        }, [currentWidth, currentHeight, targetWindow]);
-        // Save position when it changes
+        }, [expandedWidth, expandedHeight, targetWindow]);
+        // Clamp collapsed position on viewport change
         React.useEffect(() => {
-            if (position.left > MIN_POSITION_THRESHOLD || position.top > MIN_POSITION_THRESHOLD) {
-                setItem('widget_position', position);
-            }
-        }, [position]);
-        // Save size when it changes (list mode expanded only)
+            setCollapsedPosition(prev => ({
+                left: Math.max(0, Math.min(prev.left, targetWindow.innerWidth - COLLAPSED_WIDTH)),
+                top: Math.max(0, Math.min(prev.top, targetWindow.innerHeight - COLLAPSED_HEIGHT)),
+            }));
+        }, [targetWindow]);
+        // Persist collapsed position
         React.useEffect(() => {
-            if (isListMode && !isCollapsed && size.width > MIN_POSITION_THRESHOLD && size.height > MIN_POSITION_THRESHOLD) {
+            setItem('widget_collapsed_position', collapsedPosition);
+        }, [collapsedPosition]);
+        // Persist expanded position
+        React.useEffect(() => {
+            setItem('widget_position', expandedPosition);
+        }, [expandedPosition]);
+        // Persist size (list mode expanded only)
+        React.useEffect(() => {
+            if (isListMode && !isCollapsed && size.width > 0 && size.height > 0) {
                 setItem('widget_size', size);
             }
         }, [size, isCollapsed, isListMode]);
-        // Constrain position when window resizes
+        // Constrain both positions when window resizes
         React.useEffect(() => {
             const handleResize = () => {
-                setPosition(prev => ({
-                    left: Math.max(0, Math.min(prev.left, targetWindow.innerWidth - currentWidth)),
-                    top: Math.max(0, Math.min(prev.top, targetWindow.innerHeight - currentHeight)),
+                setExpandedPosition(prev => ({
+                    left: Math.max(0, Math.min(prev.left, targetWindow.innerWidth - expandedWidth)),
+                    top: Math.max(0, Math.min(prev.top, targetWindow.innerHeight - expandedHeight)),
+                }));
+                setCollapsedPosition(prev => ({
+                    left: Math.max(0, Math.min(prev.left, targetWindow.innerWidth - COLLAPSED_WIDTH)),
+                    top: Math.max(0, Math.min(prev.top, targetWindow.innerHeight - COLLAPSED_HEIGHT)),
                 }));
             };
             targetWindow.addEventListener('resize', handleResize);
             return () => targetWindow.removeEventListener('resize', handleResize);
-        }, [currentWidth, currentHeight, targetWindow]);
+        }, [expandedWidth, expandedHeight, targetWindow]);
         const handleMouseDown = (e) => {
             const target = e.target;
-            if (!target.closest('.journy-message-widget-drag-handle'))
+            if (!target.closest('.journy-message-widget-header'))
+                return;
+            if (target.closest('button') || target.closest('a'))
                 return;
             if (!widgetRef.current)
                 return;
@@ -2172,16 +2280,24 @@
                     hasDraggedThisSession.current = true;
                     const newLeft = e.clientX - dragOffset.x;
                     const newTop = e.clientY - dragOffset.y;
-                    setPosition({
-                        left: Math.max(0, Math.min(newLeft, targetWindow.innerWidth - currentWidth)),
-                        top: Math.max(0, Math.min(newTop, targetWindow.innerHeight - currentHeight)),
-                    });
+                    if (isCollapsedRef.current) {
+                        setCollapsedPosition({
+                            left: Math.max(0, Math.min(newLeft, targetWindow.innerWidth - COLLAPSED_WIDTH)),
+                            top: Math.max(0, Math.min(newTop, targetWindow.innerHeight - COLLAPSED_HEIGHT)),
+                        });
+                    }
+                    else {
+                        setExpandedPosition({
+                            left: Math.max(0, Math.min(newLeft, targetWindow.innerWidth - expandedWidth)),
+                            top: Math.max(0, Math.min(newTop, targetWindow.innerHeight - expandedHeight)),
+                        });
+                    }
                 }
                 else if (isResizing && resizeStart) {
                     const deltaX = e.clientX - resizeStart.x;
                     const deltaY = e.clientY - resizeStart.y;
-                    const maxWidth = targetWindow.innerWidth - position.left;
-                    const maxHeight = targetWindow.innerHeight - position.top;
+                    const maxWidth = targetWindow.innerWidth - expandedPosition.left;
+                    const maxHeight = targetWindow.innerHeight - expandedPosition.top;
                     const newWidth = Math.max(MIN_LIST_WIDTH, Math.min(resizeStart.width + deltaX, maxWidth));
                     const newHeight = Math.max(MIN_LIST_HEIGHT, Math.min(resizeStart.height + deltaY, maxHeight));
                     setSize({ width: newWidth, height: newHeight });
@@ -2204,7 +2320,7 @@
                 targetDocument.removeEventListener('mousemove', handleMouseMove);
                 targetDocument.removeEventListener('mouseup', handleMouseUp);
             };
-        }, [isDragging, isResizing, dragOffset, resizeStart, position, currentWidth, currentHeight, targetDocument]);
+        }, [isDragging, isResizing, dragOffset, resizeStart, expandedPosition, expandedWidth, expandedHeight, targetDocument, targetWindow]);
         const handleResizeStart = (e) => {
             e.stopPropagation();
             if (!widgetRef.current)
@@ -2233,14 +2349,97 @@
     }
     const TRANSITION_DURATION_S = 0.25;
 
-    const SETTINGS_STORAGE_KEY = 'widget_settings';
+    const DragHandle = ({ onMouseDown, title = 'Drag to move', className = 'journy-message-widget-drag-handle', }) => (React__namespace.createElement("div", { className: className, onMouseDown: onMouseDown, title: title },
+        React__namespace.createElement("svg", { viewBox: "0 0 684 684", xmlns: "http://www.w3.org/2000/svg", width: "20", height: "20" },
+            React__namespace.createElement("g", { fill: "none" },
+                React__namespace.createElement("circle", { cx: "342", cy: "342", fill: "#fff", r: "342" }),
+                React__namespace.createElement("circle", { cx: "343.5", cy: "343.5", fill: "#f2994a", r: "156.5" }),
+                React__namespace.createElement("path", { d: "m344 68c151.878306 0 275 123.121694 275 275s-123.121694 275-275 275-275-123.121694-275-275 123.121694-275 275-275zm.5 46c-126.74935 0-229.5 102.75065-229.5 229.5s102.75065 229.5 229.5 229.5 229.5-102.75065 229.5-229.5-102.75065-229.5-229.5-229.5z", fill: "#528afa" })))));
+
+    function getMessageTitle(msg) {
+        if (!msg)
+            return 'Messages';
+        const match = msg.message.match(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/i);
+        return match ? match[1].replace(/<[^>]+>/g, '') : 'Messages';
+    }
+    /** Widget header: drag handle, title/badge area (collapsed vs expanded), and control buttons. */
+    const WidgetHeader = ({ isCollapsed, isListMode, unreadCount, displayMessage, allMessagesToShow, onToggleExpand, onClose, onCloseWidget, onOpenSettings, handleMouseDown, }) => {
+        if (isCollapsed) {
+            return (React__namespace.createElement("div", { className: "journy-message-widget-header journy-message-widget-header--pill", onMouseDown: handleMouseDown },
+                React__namespace.createElement("div", { className: "journy-message-widget-logo-wrapper" },
+                    React__namespace.createElement(DragHandle, null),
+                    unreadCount > 0 && (React__namespace.createElement("span", { className: "journy-message-widget-logo-badge" }, unreadCount))),
+                React__namespace.createElement("span", { className: "journy-message-widget-pill-title" }, "Messages"),
+                React__namespace.createElement("div", { className: "journy-message-widget-avatar-slot" },
+                    React__namespace.createElement("button", { type: "button", className: "journy-message-widget-close journy-message-widget-close--pill", onClick: (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onCloseWidget ? onCloseWidget() : onClose();
+                        }, onMouseDown: (e) => e.stopPropagation(), title: "Close widget", "aria-label": "Close" }, "\u00D7"))));
+        }
+        return (React__namespace.createElement("div", { className: "journy-message-widget-header", onMouseDown: handleMouseDown },
+            React__namespace.createElement(DragHandle, null),
+            React__namespace.createElement("div", { className: "journy-message-widget-header-content" },
+                unreadCount > 0 && (React__namespace.createElement("span", { className: "journy-message-widget-badge" }, unreadCount)),
+                React__namespace.createElement("span", { className: "journy-message-widget-title" }, displayMessage
+                    ? getMessageTitle(displayMessage)
+                    : allMessagesToShow.length > 0
+                        ? getMessageTitle(allMessagesToShow[0])
+                        : 'Messages'),
+                isListMode && allMessagesToShow.length > 1 && (React__namespace.createElement("span", { className: "journy-message-widget-message-count" },
+                    "(",
+                    allMessagesToShow.length,
+                    " messages)"))),
+            React__namespace.createElement("div", { className: "journy-message-widget-controls" },
+                isDebugSettings() && (React__namespace.createElement("button", { type: "button", className: "journy-message-widget-settings-btn", onClick: (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onOpenSettings();
+                    }, onMouseDown: (e) => e.stopPropagation(), title: "Settings", "aria-label": "Settings" },
+                    React__namespace.createElement("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", xmlns: "http://www.w3.org/2000/svg" },
+                        React__namespace.createElement("path", { d: "M6.5 1L6.2 2.6C5.8 2.8 5.5 3 5.2 3.2L3.6 2.7L2.1 5.3L3.4 6.3C3.4 6.5 3.3 6.8 3.3 7C3.3 7.2 3.4 7.5 3.4 7.7L2.1 8.7L3.6 11.3L5.2 10.8C5.5 11 5.8 11.2 6.2 11.4L6.5 13H9.5L9.8 11.4C10.2 11.2 10.5 11 10.8 10.8L12.4 11.3L13.9 8.7L12.6 7.7C12.6 7.5 12.7 7.2 12.7 7C12.7 6.8 12.6 6.5 12.6 6.3L13.9 5.3L12.4 2.7L10.8 3.2C10.5 3 10.2 2.8 9.8 2.6L9.5 1H6.5ZM8 5C9.1 5 10 5.9 10 7C10 8.1 9.1 9 8 9C6.9 9 6 8.1 6 7C6 5.9 6.9 5 8 5Z", fill: "currentColor" })))),
+                React__namespace.createElement("button", { type: "button", className: "journy-message-widget-toggle", onClick: (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onToggleExpand();
+                    }, onMouseDown: (e) => {
+                        e.stopPropagation();
+                    }, title: "Collapse", "aria-label": "Collapse" }, "\u2212"),
+                React__namespace.createElement("button", { type: "button", className: "journy-message-widget-close", onClick: (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onCloseWidget ? onCloseWidget() : onClose();
+                    }, onMouseDown: (e) => {
+                        e.stopPropagation();
+                    }, title: "Close widget", "aria-label": "Close" }, "\u00D7"))));
+    };
+
+    /** Stagger delay (ms) between marking each message as received for a sequential read effect. */
+    const READ_RECEIPT_STAGGER_MS = 800;
+    /** Minimum fraction of a message that must be visible in the scroll container to count as "read". */
+    const READ_VISIBILITY_THRESHOLD = 0.5;
+    /** Shared counter so multiple messages becoming visible at the same time get sequential delays. */
+    const getNextVisibilityDelay = (() => {
+        let counter = 0;
+        let resetTimer = null;
+        // Reset counter after a quiet period so future batches start from 0
+        return () => {
+            const order = counter++;
+            if (resetTimer)
+                clearTimeout(resetTimer);
+            resetTimer = setTimeout(() => { counter = 0; }, 3000);
+            return order * READ_RECEIPT_STAGGER_MS;
+        };
+    })();
     /**
      * Mark message as received when its element is visible in the viewport.
+     * A staggered delay is applied so messages appear to be read one-by-one
+     * rather than all at once.
      * When running inside an iframe without remote rendering (renderTarget: 'self'),
      * the IntersectionObserver would use the tiny iframe viewport and fire immediately,
      * so we skip it and rely on explicit user interactions instead.
      */
-    function useMessageVisibility(ref, messageId, received, onMessageReceived) {
+    function useMessageVisibility(ref, messageId, received, onMessageReceived, scrollRoot) {
         const { isRemote } = useRenderContext();
         const hasFiredRef = React.useRef(false);
         React.useEffect(() => {
@@ -2252,33 +2451,63 @@
             const el = ref.current;
             if (!el || !onMessageReceived)
                 return;
-            // Skip IntersectionObserver when inside an iframe but rendering to self —
-            // the iframe viewport is likely too small, causing false positives.
-            let isInIframe;
-            try {
-                isInIframe = window !== window.top;
+            // When a scrollRoot is provided (e.g. the widget's own scrollable list container),
+            // the observer is scoped to that container — messages must actually scroll into
+            // view inside the widget to be marked as read.
+            // Without a scrollRoot, fall back to the browser viewport but skip the observer
+            // when inside an iframe without remote rendering (iframe viewport causes false positives).
+            const root = scrollRoot?.current ?? null;
+            if (!root) {
+                let isInIframe;
+                try {
+                    isInIframe = window !== window.top;
+                }
+                catch {
+                    isInIframe = true;
+                }
+                if (isInIframe && !isRemote)
+                    return;
             }
-            catch {
-                isInIframe = true;
-            }
-            if (isInIframe && !isRemote)
-                return;
+            let delayTimer = null;
+            /** Returns the fraction of `el` currently visible inside `root` (0–1). */
+            const currentVisibilityRatio = () => {
+                const elRect = el.getBoundingClientRect();
+                const rootRect = root ? root.getBoundingClientRect() : { top: 0, bottom: window.innerHeight };
+                const visiblePx = Math.min(elRect.bottom, rootRect.bottom) - Math.max(elRect.top, rootRect.top);
+                return elRect.height > 0 ? Math.max(0, visiblePx) / elRect.height : 0;
+            };
             const observer = new IntersectionObserver((entries) => {
                 const [entry] = entries;
                 if (entry?.isIntersecting && !hasFiredRef.current) {
                     hasFiredRef.current = true;
-                    onMessageReceived([messageId]);
                     observer.disconnect();
+                    const delay = getNextVisibilityDelay();
+                    delayTimer = setTimeout(() => {
+                        // Re-verify the message is still meaningfully visible when the delay fires.
+                        // Scroll momentum can briefly push a message past the threshold; if the user
+                        // has already scrolled away, don't mark it as read.
+                        if (currentVisibilityRatio() >= READ_VISIBILITY_THRESHOLD) {
+                            onMessageReceived([messageId]);
+                        }
+                        else {
+                            hasFiredRef.current = false;
+                        }
+                    }, delay);
                 }
-            }, { threshold: 0.1, root: null });
+            }, { threshold: READ_VISIBILITY_THRESHOLD, root });
             observer.observe(el);
-            return () => observer.disconnect();
-        }, [messageId, received, onMessageReceived, isRemote]);
+            return () => {
+                observer.disconnect();
+                if (delayTimer)
+                    clearTimeout(delayTimer);
+            };
+        }, [messageId, received, onMessageReceived, isRemote, scrollRoot]);
     }
+
     /** Wraps a message row with a ref and viewport visibility observer to mark as received when visible. */
-    const MessageRow = ({ message, isSeparated, onMessageReceived, onDismissMessage, children }) => {
+    const MessageRow = ({ message, isSeparated, onMessageReceived, onDismissMessage, scrollRoot, children }) => {
         const ref = React.useRef(null);
-        useMessageVisibility(ref, message.id, message.received, onMessageReceived);
+        useMessageVisibility(ref, message.id, message.received, onMessageReceived, scrollRoot);
         return (React__namespace.createElement("div", { ref: ref, className: `journy-message-widget-message journy-message-${message.received ? 'viewed' : 'info'} ${isSeparated ? 'journy-message-widget-message-separated' : ''}` },
             onDismissMessage && (React__namespace.createElement("button", { type: "button", className: "journy-message-widget-message-close", onClick: (e) => {
                     e.stopPropagation();
@@ -2287,20 +2516,59 @@
                 }, title: "Dismiss message", "aria-label": "Dismiss" }, "\u00D7")),
             children));
     };
-    /** Derives total, unread, and read counts from the messages array. */
+
+    /** Renders sanitized message HTML content and optional timestamp. */
+    const MessageRenderer = ({ message, onClick }) => (React__namespace.createElement(React__namespace.Fragment, null,
+        React__namespace.createElement("div", { className: "journy-message-content journy-message-content-clickable", dangerouslySetInnerHTML: { __html: sanitizeHtml(message.message) }, onClick: onClick }),
+        message.createdAt && (React__namespace.createElement("div", { className: "journy-message-timestamp" }, formatTimestamp(message.createdAt)))));
+
+    const ICON_SIZE = 16;
+    const STROKE_WIDTH = 1.5;
+    /** Diagonal from top-right to bottom-left (resize corner). */
+    const PATH_MAIN = 'M16 0 L0 16';
+    const PATH_INNER = 'M13 3 L3 13';
+    const ResizeHandle = ({ onMouseDown, title = 'Resize', className = 'journy-message-widget-resize-handle', }) => (React__namespace.createElement("div", { className: className, onMouseDown: onMouseDown, title: title },
+        React__namespace.createElement("svg", { width: ICON_SIZE, height: ICON_SIZE, viewBox: `0 0 ${ICON_SIZE} ${ICON_SIZE}`, fill: "none", xmlns: "http://www.w3.org/2000/svg" },
+            React__namespace.createElement("path", { d: `${PATH_MAIN} ${PATH_INNER}`, stroke: "#9ca3af", strokeWidth: STROKE_WIDTH, strokeLinecap: "round" }))));
+
+    /** Renders the expanded list-mode content: scrollable message list (or empty state) + resize handle. */
+    const WidgetListView = ({ messages, contentRef, isEmpty, onMessageReceived, onDismissMessage, onContentClick, handleResizeStart, }) => (React__namespace.createElement(React__namespace.Fragment, null,
+        isEmpty ? (React__namespace.createElement("div", { className: "journy-message-widget-content journy-message-widget-empty" },
+            React__namespace.createElement("p", null, "No unread messages"))) : (React__namespace.createElement("div", { ref: contentRef, className: "journy-message-widget-content" }, messages.map((message, index) => (React__namespace.createElement(MessageRow, { key: message.id, message: message, isSeparated: index < messages.length - 1, onMessageReceived: onMessageReceived, onDismissMessage: onDismissMessage, scrollRoot: contentRef },
+            React__namespace.createElement(MessageRenderer, { message: message, onClick: (e) => onContentClick(message, e) })))))),
+        React__namespace.createElement(ResizeHandle, { onMouseDown: handleResizeStart })));
+
+    /** Renders the expanded single/widget-mode content: one message at a time with prev/next navigation. */
+    const WidgetSingleView = ({ displayMessage, allMessagesToShow, currentMessageIndex, canGoPrev, canGoNext, onMessageReceived, onDismissMessage, onContentClick, onPrevMessage, onNextMessage, }) => (React__namespace.createElement(React__namespace.Fragment, null,
+        React__namespace.createElement("div", { className: "journy-message-widget-content journy-message-widget-content--single" }, displayMessage ? (React__namespace.createElement(MessageRow, { message: displayMessage, isSeparated: false, onMessageReceived: onMessageReceived, onDismissMessage: onDismissMessage },
+            React__namespace.createElement(MessageRenderer, { message: displayMessage, onClick: (e) => onContentClick(displayMessage, e) }))) : null),
+        allMessagesToShow.length > 1 && (React__namespace.createElement("div", { className: "journy-message-widget-position" },
+            React__namespace.createElement("button", { type: "button", className: "journy-message-widget-nav", onClick: (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onPrevMessage?.();
+                }, title: "Previous message", "aria-label": "Previous", disabled: !canGoPrev }, "\u2039"),
+            React__namespace.createElement("span", { className: "journy-message-widget-position-text" },
+                currentMessageIndex + 1,
+                " / ",
+                allMessagesToShow.length),
+            React__namespace.createElement("button", { type: "button", className: "journy-message-widget-nav", onClick: (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onNextMessage?.();
+                }, title: "Next message", "aria-label": "Next", disabled: !canGoNext }, "\u203A")))));
+
+    const SETTINGS_STORAGE_KEY = 'widget_settings';
+    /** Derives unread count from the messages array. */
     function useMessageCounts(messages) {
         return React.useMemo(() => {
             const unreadCount = messages.filter((m) => !m.received).length;
-            const readCount = messages.filter((m) => m.received).length;
-            return {
-                unreadCount,
-                readCount,
-            };
+            return { unreadCount };
         }, [messages]);
     }
     const MessageWidget = ({ store, onClose, onCloseWidget, onLinkClick, onToggleExpand, onMessageReceived, onDismissMessage, onNextMessage, onPrevMessage, onSettingsChange, configInfo, }) => {
         const { messages, currentMessage, isCollapsed, displayMode, widgetVisible } = useMessagingStore(store);
-        const { unreadCount, readCount } = useMessageCounts(messages);
+        const { unreadCount } = useMessageCounts(messages);
         const [modalMessage, setModalMessage] = React.useState(null);
         const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
         const [settings, setSettings] = React.useState(() => {
@@ -2320,7 +2588,6 @@
             const el = contentRef.current;
             if (!el)
                 return;
-            // Restore saved scroll position
             const savedScroll = getItem('widget_scroll_position');
             if (savedScroll != null) {
                 el.scrollTop = savedScroll;
@@ -2344,13 +2611,11 @@
             setItem(SETTINGS_STORAGE_KEY, newSettings);
             onSettingsChange?.(newSettings);
         }, [onSettingsChange]);
-        if (!widgetVisible) {
+        if (!widgetVisible)
             return null;
-        }
         const handleLinkClick = (e) => {
             e.preventDefault();
-            const url = e.currentTarget.href;
-            onLinkClick(url);
+            onLinkClick(e.currentTarget.href);
         };
         const handleContentClick = (message, e) => {
             const target = e.target;
@@ -2380,102 +2645,28 @@
             : 0;
         const canGoPrev = !isListMode && allMessagesToShow.length > 1 && currentMessageIndex > 0;
         const canGoNext = !isListMode && allMessagesToShow.length > 1 && currentMessageIndex < allMessagesToShow.length - 1;
-        // Extract title from HTML if no title field exists
-        const getMessageTitle = (msg) => {
-            if (!msg)
-                return 'Messages';
-            // Try to extract from HTML (first h1, h2, or h3)
-            const match = msg.message.match(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/i);
-            return match ? match[1].replace(/<[^>]+>/g, '') : 'Messages';
-        };
         return (React__namespace.createElement("div", { ref: widgetRef, className: `journy-message-widget ${!isCollapsed ? 'journy-message-widget-expanded' : 'journy-message-widget-collapsed'} ${isDragging ? 'journy-message-widget-dragging' : ''} ${isResizing ? 'journy-message-widget-resizing' : ''}`, style: {
                 left: `${position.left}px`,
                 top: `${position.top}px`,
                 width: `${currentWidth}px`,
                 height: `${currentHeight}px`,
-                transition: isDragging || isResizing ? 'none' : `height ${TRANSITION_DURATION_S}s ease-out, top ${TRANSITION_DURATION_S}s ease-out`,
+                transition: isDragging || isResizing ? 'none' : `height ${TRANSITION_DURATION_S}s ease-out, width ${TRANSITION_DURATION_S}s ease-out, top ${TRANSITION_DURATION_S}s ease-out, left ${TRANSITION_DURATION_S}s ease-out`,
             }, onClick: (e) => {
-                // Don't toggle if this click was right after a drag (avoids expand when releasing drag at bottom edge)
                 if (justFinishedDragging.current) {
                     e.preventDefault();
                     e.stopPropagation();
                     return;
                 }
-                // Toggle on click when collapsed, but not if clicking on buttons, drag handle, or content area
                 if (!isCollapsed)
-                    return; // Don't toggle when expanded
+                    return;
                 const target = e.target;
-                const isButton = target.closest('button');
-                const isDragHandle = target.closest('.journy-message-widget-drag-handle');
-                const isLink = target.tagName === 'A' || target.closest('a');
-                // Only toggle when clicking on header (but not buttons, drag handle, or links)
-                if (!isButton && !isDragHandle && !isLink) {
+                if (!target.closest('button') && target.tagName !== 'A' && !target.closest('a')) {
                     onToggleExpand();
                 }
             } },
-            React__namespace.createElement("div", { className: "journy-message-widget-header" },
-                React__namespace.createElement(DragHandle, { onMouseDown: handleMouseDown }),
-                React__namespace.createElement("div", { className: "journy-message-widget-header-content" }, isCollapsed ? (React__namespace.createElement(React__namespace.Fragment, null,
-                    React__namespace.createElement("span", { className: "journy-message-widget-badge" }, unreadCount),
-                    React__namespace.createElement("span", { className: "journy-message-widget-title" }, unreadCount > 0 ? 'New Messages' : 'Messages'),
-                    readCount > 0 && (React__namespace.createElement("span", { className: "journy-message-widget-read-count" },
-                        "(",
-                        readCount,
-                        " read)")))) : (React__namespace.createElement(React__namespace.Fragment, null,
-                    unreadCount > 0 && (React__namespace.createElement("span", { className: "journy-message-widget-badge" }, unreadCount)),
-                    React__namespace.createElement("span", { className: "journy-message-widget-title" }, displayMessage ? getMessageTitle(displayMessage) : allMessagesToShow.length > 0 ? getMessageTitle(allMessagesToShow[0]) : 'Messages'),
-                    isListMode && allMessagesToShow.length > 1 && (React__namespace.createElement("span", { className: "journy-message-widget-message-count" },
-                        "(",
-                        allMessagesToShow.length,
-                        " messages)"))))),
-                React__namespace.createElement("div", { className: "journy-message-widget-controls" },
-                    isDebugSettings() && !isCollapsed && (React__namespace.createElement("button", { className: "journy-message-widget-settings-btn", onClick: (e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            setIsSettingsOpen(true);
-                        }, onMouseDown: (e) => e.stopPropagation(), title: "Settings", "aria-label": "Settings" },
-                        React__namespace.createElement("svg", { width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", xmlns: "http://www.w3.org/2000/svg" },
-                            React__namespace.createElement("path", { d: "M6.5 1L6.2 2.6C5.8 2.8 5.5 3 5.2 3.2L3.6 2.7L2.1 5.3L3.4 6.3C3.4 6.5 3.3 6.8 3.3 7C3.3 7.2 3.4 7.5 3.4 7.7L2.1 8.7L3.6 11.3L5.2 10.8C5.5 11 5.8 11.2 6.2 11.4L6.5 13H9.5L9.8 11.4C10.2 11.2 10.5 11 10.8 10.8L12.4 11.3L13.9 8.7L12.6 7.7C12.6 7.5 12.7 7.2 12.7 7C12.7 6.8 12.6 6.5 12.6 6.3L13.9 5.3L12.4 2.7L10.8 3.2C10.5 3 10.2 2.8 9.8 2.6L9.5 1H6.5ZM8 5C9.1 5 10 5.9 10 7C10 8.1 9.1 9 8 9C6.9 9 6 8.1 6 7C6 5.9 6.9 5 8 5Z", fill: "currentColor" })))),
-                    React__namespace.createElement("button", { className: "journy-message-widget-toggle", onClick: (e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            onToggleExpand();
-                        }, onMouseDown: (e) => {
-                            e.stopPropagation(); // Prevent drag from starting
-                        }, title: !isCollapsed ? 'Collapse' : 'Expand', "aria-label": !isCollapsed ? 'Collapse' : 'Expand' }, !isCollapsed ? '−' : '+'),
-                    isCollapsed && (React__namespace.createElement("button", { className: "journy-message-widget-close", onClick: (e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            onCloseWidget ? onCloseWidget() : onClose();
-                        }, onMouseDown: (e) => {
-                            e.stopPropagation();
-                        }, title: "Close widget", "aria-label": "Close" }, "\u00D7")),
-                    !isCollapsed && !isListMode && allMessagesToShow.length > 1 && (React__namespace.createElement(React__namespace.Fragment, null,
-                        React__namespace.createElement("button", { className: "journy-message-widget-nav", onClick: (e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                onPrevMessage?.();
-                            }, onMouseDown: (e) => e.stopPropagation(), title: "Previous message", "aria-label": "Previous", disabled: !canGoPrev }, "\u2039"),
-                        React__namespace.createElement("button", { className: "journy-message-widget-nav", onClick: (e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                onNextMessage?.();
-                            }, onMouseDown: (e) => e.stopPropagation(), title: "Next message", "aria-label": "Next", disabled: !canGoNext }, "\u203A"))))),
-            !isCollapsed && allMessagesToShow.length > 0 && (React__namespace.createElement(React__namespace.Fragment, null,
-                React__namespace.createElement("div", { ref: contentRef, className: `journy-message-widget-content ${!isListMode ? 'journy-message-widget-content--single' : ''}` }, isListMode ? (allMessagesToShow.map((message, index) => (React__namespace.createElement(MessageRow, { key: message.id, message: message, isSeparated: index < allMessagesToShow.length - 1, onMessageReceived: onMessageReceived, onDismissMessage: onDismissMessage },
-                    React__namespace.createElement("div", { className: "journy-message-content journy-message-content-clickable", dangerouslySetInnerHTML: { __html: sanitizeHtml(message.message) }, onClick: (e) => handleContentClick(message, e) }),
-                    message.createdAt && (React__namespace.createElement("div", { className: "journy-message-timestamp" }, formatTimestamp(message.createdAt))))))) : displayMessage ? (React__namespace.createElement(MessageRow, { message: displayMessage, isSeparated: false, onMessageReceived: onMessageReceived, onDismissMessage: onDismissMessage },
-                    React__namespace.createElement("div", { className: "journy-message-content journy-message-content-clickable", dangerouslySetInnerHTML: { __html: sanitizeHtml(displayMessage.message) }, onClick: (e) => handleContentClick(displayMessage, e) }),
-                    displayMessage.createdAt && (React__namespace.createElement("div", { className: "journy-message-timestamp" }, formatTimestamp(displayMessage.createdAt))))) : null),
-                !isListMode && allMessagesToShow.length > 1 && (React__namespace.createElement("div", { className: "journy-message-widget-position" },
-                    currentMessageIndex + 1,
-                    " / ",
-                    allMessagesToShow.length)),
-                isListMode && React__namespace.createElement(ResizeHandle, { onMouseDown: handleResizeStart }))),
-            !isCollapsed && allMessagesToShow.length === 0 && (React__namespace.createElement(React__namespace.Fragment, null,
-                React__namespace.createElement("div", { className: "journy-message-widget-content journy-message-widget-empty" },
-                    React__namespace.createElement("p", null, "No unread messages")),
-                isListMode && React__namespace.createElement(ResizeHandle, { onMouseDown: handleResizeStart }))),
+            React__namespace.createElement(WidgetHeader, { isCollapsed: isCollapsed, isListMode: isListMode, unreadCount: unreadCount, displayMessage: displayMessage, allMessagesToShow: allMessagesToShow, onToggleExpand: onToggleExpand, onClose: onClose, onCloseWidget: onCloseWidget, onOpenSettings: () => setIsSettingsOpen(true), handleMouseDown: handleMouseDown }),
+            !isCollapsed && isListMode && (React__namespace.createElement(WidgetListView, { messages: allMessagesToShow, contentRef: contentRef, isEmpty: allMessagesToShow.length === 0, onMessageReceived: onMessageReceived, onDismissMessage: onDismissMessage, onContentClick: handleContentClick, handleResizeStart: handleResizeStart })),
+            !isCollapsed && !isListMode && allMessagesToShow.length > 0 && (React__namespace.createElement(WidgetSingleView, { displayMessage: displayMessage, allMessagesToShow: allMessagesToShow, currentMessageIndex: currentMessageIndex, canGoPrev: canGoPrev, canGoNext: canGoNext, onMessageReceived: onMessageReceived, onDismissMessage: onDismissMessage, onContentClick: handleContentClick, onPrevMessage: onPrevMessage, onNextMessage: onNextMessage })),
             isDebugSettings() && !isCollapsed && (React__namespace.createElement(SettingsPanel, { isOpen: isSettingsOpen, onClose: () => setIsSettingsOpen(false), settings: settings, onSettingsChange: handleSettingsChange, configInfo: configInfo })),
             modalMessage && (React__namespace.createElement(MessagePopup, { message: modalMessage, onClose: () => setModalMessage(null), onLinkClick: onLinkClick }))));
     };
@@ -2486,65 +2677,79 @@
         default: MessageWidget
     });
 
-    /**
-     * Builds a generic track batch item for any SDK event type.
-     */
-    function buildTrackEventPayload(scope, identity, event, properties) {
-        const base = {
-            type: "track",
-            event: event,
-            properties,
-        };
-        if (scope === "account" && identity.accountId) {
-            return {
-                ...base,
-                anonymousId: identity.accountId,
-                context: { groupId: identity.accountId },
-            };
+    class UIRenderer {
+        constructor(renderCtx) {
+            this.renderCtx = renderCtx;
+            this.reactRoot = null;
+            this.reactRootContainer = null;
         }
-        if (identity.userId) {
-            return { ...base, userId: identity.userId };
+        initialize(rootElement, props) {
+            if (typeof window !== 'undefined' && window.React && window.ReactDOM) {
+                this.render(rootElement, props);
+            }
+            else {
+                this.waitForReact(rootElement, props);
+            }
         }
-        if (identity.anonymousId) {
-            return { ...base, anonymousId: identity.anonymousId };
+        waitForReact(rootElement, props) {
+            const checkInterval = setInterval(() => {
+                if (typeof window !== 'undefined' && window.React && window.ReactDOM) {
+                    clearInterval(checkInterval);
+                    this.render(rootElement, props);
+                }
+            }, REACT_CHECK_INTERVAL);
+            setTimeout(() => {
+                clearInterval(checkInterval);
+            }, REACT_WAIT_TIMEOUT);
         }
-        throw new Error("User scope requires userId or anonymousId; account scope requires accountId.");
-    }
-
-    const SEND_ANALYTICS_PATH = "/frontend/v1/b";
-    class AnalyticsClient {
-        constructor(config) {
-            this.config = config;
-            this.analyticsHost = config.apiEndpoint || DEFAULT_API_ENDPOINT;
+        render(rootElement, props) {
+            try {
+                const React = window.React;
+                const ReactDOM = window.ReactDOM;
+                if (!React || !ReactDOM) {
+                    throw new Error('React or ReactDOM not found in window');
+                }
+                // If the container was replaced (e.g. root removed and re-created), create a new React root
+                if (this.reactRoot && this.reactRootContainer !== rootElement) {
+                    this.reactRoot = null;
+                    this.reactRootContainer = null;
+                }
+                const MessageWidget$1 = MessageWidget || MessageWidget;
+                if (!MessageWidget$1) {
+                    console.error('MessageWidget not found in module:', MessageWidgetModule);
+                    throw new Error('MessageWidget not found in module');
+                }
+                const widgetElement = React.createElement(MessageWidget$1, props);
+                const element = React.createElement(RenderCtx.Provider, { value: this.renderCtx }, widgetElement);
+                // Use React 18 createRoot if available, otherwise fall back to render
+                if (ReactDOM.createRoot) {
+                    if (!this.reactRoot) {
+                        rootElement.innerHTML = '';
+                        this.reactRoot = ReactDOM.createRoot(rootElement);
+                        this.reactRootContainer = rootElement;
+                    }
+                    this.reactRoot.render(element);
+                }
+                else {
+                    rootElement.innerHTML = '';
+                    ReactDOM.render(element, rootElement);
+                }
+            }
+            catch (error) {
+                console.error('Failed to render UI:', error);
+            }
         }
-        get trackIdentity() {
-            return {
-                userId: this.config.userId,
-                accountId: this.config.accountId,
-            };
-        }
-        /**
-         * General-purpose method: send an array of SDK events in a single batch.
-         */
-        async trackEvents(events) {
-            if (events.length === 0)
-                return true;
-            const batch = events.map(({ event, properties }) => buildTrackEventPayload(this.config.entityType, this.trackIdentity, event, properties));
-            await fetch(this.analyticsHost + SEND_ANALYTICS_PATH, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ writeKey: this.config.writeKey, batch }),
-            });
-            return true;
-        }
-        /**
-         * Convenience method for "message received" events. Calls trackEvents internally.
-         */
-        async sendAnalyticsEvents(messageIds) {
-            return this.trackEvents(messageIds.map(messageId => ({
-                event: SDKEventType.MessageReceived,
-                properties: { messageId },
-            })));
+        unmount() {
+            if (this.reactRoot) {
+                try {
+                    this.reactRoot.unmount();
+                }
+                catch (error) {
+                    console.error('Error unmounting React root:', error);
+                }
+                this.reactRoot = null;
+                this.reactRootContainer = null;
+            }
         }
     }
 
@@ -2552,8 +2757,6 @@
         constructor(config) {
             this.initialized = false;
             this.pollingInterval = null;
-            this.reactRoot = null;
-            this.reactRootContainer = null;
             this.rootElementId = ROOT_ELEMENT_ID;
             this.unsubscribePersistence = null;
             this.beforeUnloadHandler = null;
@@ -2578,13 +2781,13 @@
             this.messageQueue = new MessageQueue();
             this.analyticsClient = new AnalyticsClient(this.config);
             this.eventTracker = new EventTracker(this.analyticsClient);
+            this.uiRenderer = new UIRenderer(this.renderCtx);
             // Build default settings from config, then overlay any saved settings.
             // Explicit config values (provided by the host) always take precedence over
             // saved localStorage settings so that changing config.js is never silently
             // ignored.
             const configOverrides = {
                 ...(config.pollingInterval != null && { pollingInterval: config.pollingInterval }),
-                ...(config.displayMode != null && { displayMode: config.displayMode }),
                 ...(config.apiEndpoint != null && { apiEndpoint: config.apiEndpoint }),
                 ...(config.styles != null && { styles: config.styles }),
             };
@@ -2597,7 +2800,6 @@
             // Apply settings back to config so they take effect
             this.config.pollingInterval = this.widgetSettings.pollingInterval;
             this.config.apiEndpoint = this.widgetSettings.apiEndpoint;
-            this.config.displayMode = this.widgetSettings.displayMode;
             const savedVisible = getItem(STORAGE_KEYS.WIDGET_VISIBLE);
             const savedCollapsed = getItem(STORAGE_KEYS.WIDGET_COLLAPSED);
             this.store = new MessagingStore({
@@ -2626,42 +2828,16 @@
         async init() {
             if (this.initialized)
                 return;
-            // Load existing messages
             await this.loadMessages();
-            // In debug mode, inject mock messages if none were loaded so the widget shows instantly
             if (isDebugMockMessages() && this.messageQueue.getActiveCount() === 0) {
                 this.injectDebugMessages();
             }
-            // Set up polling or WebSocket connection
             this.startPolling();
-            // Initialize UI
             this.initializeUI();
             this.initialized = true;
         }
         injectDebugMessages() {
-            const now = new Date().toISOString();
-            const mockMessages = [
-                {
-                    id: 'debug-msg-1',
-                    appId: 'debug',
-                    status: 'sent',
-                    scope: this.config.entityType,
-                    message: '<h3>Welcome!</h3><p>This is a <strong>debug preview</strong> message. It only appears when <code>window.__JOURNY_DEBUG__</code> is enabled.</p>',
-                    received: false,
-                    expired: false,
-                    createdAt: now,
-                },
-                {
-                    id: 'debug-msg-2',
-                    appId: 'debug',
-                    status: 'sent',
-                    scope: this.config.entityType,
-                    message: '<h3>Second Message</h3><p>Use this to test <a href="https://example.com">links</a>, navigation, and layout.</p>',
-                    received: true,
-                    expired: false,
-                    createdAt: now,
-                },
-            ];
+            const mockMessages = createDebugMessages(this.config.entityType);
             this.messageQueue.addMessages(mockMessages);
             this.store.setState({
                 messages: this.messageQueue.getAllMessages(),
@@ -2731,105 +2907,44 @@
             }
         }
         initializeUI() {
-            // Create root element for React in the target document
             const rootElement = createRootElement(this.rootElementId, this.renderCtx.targetDocument);
             this.applyStyles(this.widgetSettings.styles);
-            // Always render UI (even if no messages) so widget can show/hide itself
-            // Dynamically import React and render component
-            // This will be handled when React is available
-            if (typeof window !== 'undefined' && window.React && window.ReactDOM) {
-                this.renderUI(rootElement);
-            }
-            else {
-                this.waitForReact(rootElement);
-            }
+            this.uiRenderer.initialize(rootElement, this.buildWidgetProps());
         }
-        waitForReact(rootElement) {
-            const checkInterval = setInterval(() => {
-                if (typeof window !== 'undefined' && window.React && window.ReactDOM) {
-                    clearInterval(checkInterval);
-                    this.renderUI(rootElement);
-                }
-            }, REACT_CHECK_INTERVAL);
-            setTimeout(() => {
-                clearInterval(checkInterval);
-            }, REACT_WAIT_TIMEOUT);
-        }
-        renderUI(rootElement) {
-            try {
-                const React = window.React;
-                const ReactDOM = window.ReactDOM;
-                if (!React || !ReactDOM) {
-                    throw new Error('React or ReactDOM not found in window');
-                }
-                // If the container was replaced (e.g. root removed and re-created), create a new React root
-                if (this.reactRoot && this.reactRootContainer !== rootElement) {
-                    this.reactRoot = null;
-                    this.reactRootContainer = null;
-                }
-                // Access MessageWidget from the statically imported module
-                const MessageWidget$1 = MessageWidget || MessageWidget;
-                if (!MessageWidget$1) {
-                    console.error('MessageWidget not found in module:', MessageWidgetModule);
-                    throw new Error('MessageWidget not found in module');
-                }
-                const props = {
-                    store: this.store,
-                    onClose: () => this.handleMessageClose(),
-                    onCloseWidget: () => this.handleCloseWidget(),
-                    onLinkClick: (url) => this.handleLinkClick(url),
-                    onToggleExpand: () => this.handleToggleExpand(),
-                    onMessageReceived: (messageIds) => this.handleMessageReceived(messageIds),
-                    onDismissMessage: (messageId) => this.handleDismissMessage(messageId),
-                    onNextMessage: () => this.handleNextMessage(),
-                    onPrevMessage: () => this.handlePrevMessage(),
-                    onSettingsChange: (settings) => this.handleSettingsChange(settings),
-                    configInfo: {
-                        entityType: this.config.entityType,
-                        userId: this.config.userId,
-                        accountId: this.config.accountId,
-                    },
-                };
-                const widgetElement = React.createElement(MessageWidget$1, props);
-                const element = React.createElement(RenderCtx.Provider, { value: this.renderCtx }, widgetElement);
-                // Use React 18 createRoot if available, otherwise fall back to render
-                if (ReactDOM.createRoot) {
-                    if (!this.reactRoot) {
-                        rootElement.innerHTML = '';
-                        this.reactRoot = ReactDOM.createRoot(rootElement);
-                        this.reactRootContainer = rootElement;
-                    }
-                    this.reactRoot.render(element);
-                }
-                else {
-                    rootElement.innerHTML = '';
-                    ReactDOM.render(element, rootElement);
-                }
-            }
-            catch (error) {
-                console.error('Failed to render UI:', error);
-            }
+        buildWidgetProps() {
+            return {
+                store: this.store,
+                onClose: () => this.handleMessageClose(),
+                onCloseWidget: () => this.handleCloseWidget(),
+                onLinkClick: (url) => this.handleLinkClick(url),
+                onToggleExpand: () => this.handleToggleExpand(),
+                onMessageReceived: (messageIds) => this.handleMessageReceived(messageIds),
+                onDismissMessage: (messageId) => this.handleDismissMessage(messageId),
+                onNextMessage: () => this.handleNextMessage(),
+                onPrevMessage: () => this.handlePrevMessage(),
+                onSettingsChange: (settings) => this.handleSettingsChange(settings),
+                configInfo: {
+                    entityType: this.config.entityType,
+                    userId: this.config.userId,
+                    accountId: this.config.accountId,
+                },
+            };
         }
         handleSettingsChange(newSettings) {
             const prev = this.widgetSettings;
             this.widgetSettings = newSettings;
             setItem(STORAGE_KEYS.WIDGET_SETTINGS, newSettings);
-            // Sync config
             this.config.pollingInterval = newSettings.pollingInterval;
             this.config.apiEndpoint = newSettings.apiEndpoint;
-            // Restart polling if interval changed
             if (newSettings.pollingInterval !== prev.pollingInterval) {
                 this.startPolling();
             }
-            // Switch display mode
             if (newSettings.displayMode !== prev.displayMode) {
                 this.store.setState({ displayMode: newSettings.displayMode });
             }
-            // Re-apply styles if changed
             if (JSON.stringify(newSettings.styles) !== JSON.stringify(prev.styles)) {
                 this.applyStyles(newSettings.styles);
             }
-            // Rebuild API client if endpoint or proxy changed
             if (newSettings.apiEndpoint !== prev.apiEndpoint) {
                 this.apiClient = new ApiClient(this.config);
             }
@@ -2918,13 +3033,12 @@
             this.store.setState({ messages: this.messageQueue.getAllMessages() });
         }
         async handleMessageReceived(messageIds) {
-            const ids = (Array.isArray(messageIds) ? messageIds : [messageIds]);
+            const ids = Array.isArray(messageIds) ? messageIds : [messageIds];
             const alreadyReceivedIds = this.messageQueue.getAlreadyReceivedIds(ids);
             if (alreadyReceivedIds.length === ids.length)
                 return;
             // Track locally first to prevent duplicate sends
             this.messageQueue.markMessageAsReceived(ids);
-            // Update currentMessage so re-render reflects received status immediately
             const { currentMessage } = this.uiState;
             const updates = {
                 messages: this.messageQueue.getAllMessages(),
@@ -2966,17 +3080,7 @@
             }
             this.eventTracker.destroy();
             this.store.destroy();
-            // Unmount React root before removing element
-            if (this.reactRoot) {
-                try {
-                    this.reactRoot.unmount();
-                }
-                catch (error) {
-                    console.error('Error unmounting React root:', error);
-                }
-                this.reactRoot = null;
-                this.reactRootContainer = null;
-            }
+            this.uiRenderer.unmount();
             if (this.beforeUnloadHandler) {
                 window.removeEventListener('beforeunload', this.beforeUnloadHandler);
                 this.beforeUnloadHandler = null;

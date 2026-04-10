@@ -205,7 +205,6 @@ const messaging = new JournyMessaging({
   entityType: 'user',                 // Required: 'user' or 'account'
   apiEndpoint: 'https://jtm.journy.io', // Optional: API base URL
   pollingInterval: 30000,            // Optional: Polling interval in ms (default: 30000)
-  displayMode: 'widget',            // Optional: 'widget' (floating) or 'list' (inline)
   isCollapsed: false,                // Optional: Start collapsed or expanded
   renderTarget: 'self',             // Optional: 'self', 'parent', or 'top'
 });
@@ -221,7 +220,6 @@ const messaging = new JournyMessaging({
 | `entityType` | `'user' \| 'account'` | Yes | - | Type of entity to fetch messages for |
 | `apiEndpoint` | `string` | No | `'https://jtm.journy.io'` | API base URL |
 | `pollingInterval` | `number` | No | `30000` | Interval in milliseconds to poll for new messages |
-| `displayMode` | `'widget' \| 'list'` | No | `'widget'` | Display as floating widget or inline list |
 | `isCollapsed` | `boolean` | No | `false` | Whether the widget starts collapsed |
 | `styles` | `'default' \| 'none' \| { url: string } \| { css: string }` | No | `'default'` | Style injection mode |
 | `renderTarget` | `'self' \| 'parent' \| 'top'` | No | `'self'` | Which document to render the widget in (useful for iframes) |
