@@ -203,10 +203,11 @@ const messaging = new JournyMessaging({
   userId: 'user-123',                 // Optional: User ID
   accountId: 'account-456',           // Optional: Account ID
   entityType: 'user',                 // Required: 'user' or 'account'
-  apiEndpoint: 'https://jtm.journy.io', // Optional: API base URL
+  apiEndpoint: 'https://analyze.journy.io', // Optional: API base URL
   pollingInterval: 30000,            // Optional: Polling interval in ms (default: 30000)
   isCollapsed: false,                // Optional: Start collapsed or expanded
   renderTarget: 'self',             // Optional: 'self', 'parent', or 'top'
+  hideUntilMessages: true,          // Optional: Hide the widget until first message is fetched (default: true)
 });
 ```
 
@@ -218,22 +219,24 @@ const messaging = new JournyMessaging({
 | `userId` | `string` | No | - | Current user ID |
 | `accountId` | `string` | No | - | Current account ID |
 | `entityType` | `'user' \| 'account'` | Yes | - | Type of entity to fetch messages for |
-| `apiEndpoint` | `string` | No | `'https://jtm.journy.io'` | API base URL |
+| `apiEndpoint` | `string` | No | `'https://analyze.journy.io'` | API base URL |
 | `pollingInterval` | `number` | No | `30000` | Interval in milliseconds to poll for new messages |
 | `isCollapsed` | `boolean` | No | `false` | Whether the widget starts collapsed |
 | `styles` | `'default' \| 'none' \| { url: string } \| { css: string }` | No | `'default'` | Style injection mode |
 | `renderTarget` | `'self' \| 'parent' \| 'top'` | No | `'self'` | Which document to render the widget in (useful for iframes) |
+| `hideUntilMessages` | `boolean` | No | `true` | Keep the widget hidden until the first message has been fetched. Set to `false` to mount the widget shell immediately. |
 
 ## API Reference
 
 ### Methods
 
-#### `markAsRead(messageId: string): Promise<void>`
+#### `markAsRead(messageIds: string | string[]): Promise<void>`
 
-Marks a message as read and removes it from the queue.
+Marks one or more messages as read and removes them from the queue.
 
 ```typescript
 await messaging.markAsRead('message-123');
+await messaging.markAsRead(['message-123', 'message-456']);
 ```
 
 #### `trackLinkClick(messageId: string, linkUrl: string): void`
@@ -270,26 +273,24 @@ messaging.destroy();
 
 ## Message Format
 
-Messages from the API should follow this format:
+Messages returned by the API follow this shape:
 
 ```typescript
+type MessageStatus = 'pending' | 'sent' | 'read' | 'expired';
+type MessageScope = 'account' | 'user';
+
 interface Message {
   id: string;
-  content: string;              // HTML content (will be sanitized)
-  title?: string;               // Optional title
-  type?: 'info' | 'success' | 'warning' | 'error';
-  priority?: number;            // Higher numbers = higher priority
+  appId: string;
+  accountId?: string;
+  userId?: string;
+  status: MessageStatus;
+  scope: MessageScope;
+  message: string;             // HTML content (will be sanitized)
+  received: boolean;
+  expired: boolean;
   createdAt: string;           // ISO 8601 timestamp
-  expiresAt?: string;          // ISO 8601 timestamp
-  actions?: MessageAction[];   // Optional action buttons
-  metadata?: Record<string, any>;
-}
-
-interface MessageAction {
-  label: string;
-  url?: string;
-  action?: string;
-  style?: 'primary' | 'secondary' | 'link';
+  expiredAt?: string;          // ISO 8601 timestamp
 }
 ```
 

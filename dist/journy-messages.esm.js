@@ -2734,6 +2734,7 @@ class UIRenderer {
 class JournyMessaging {
     constructor(config) {
         this.initialized = false;
+        this.uiInitialized = false;
         this.pollingInterval = null;
         this.rootElementId = ROOT_ELEMENT_ID;
         this.unsubscribePersistence = null;
@@ -2741,6 +2742,7 @@ class JournyMessaging {
         this.config = {
             apiEndpoint: DEFAULT_API_ENDPOINT,
             pollingInterval: DEFAULT_POLLING_INTERVAL,
+            hideUntilMessages: true,
             ...config,
         };
         if (!this.config.writeKey) {
@@ -2806,13 +2808,27 @@ class JournyMessaging {
     async init() {
         if (this.initialized)
             return;
+        if (!this.shouldHideUntilMessages()) {
+            this.ensureUIInitialized();
+        }
         await this.loadMessages();
         if (isDebugMockMessages() && this.messageQueue.getActiveCount() === 0) {
             this.injectDebugMessages();
         }
         this.startPolling();
-        this.initializeUI();
+        if (this.messageQueue.getActiveCount() > 0) {
+            this.ensureUIInitialized();
+        }
         this.initialized = true;
+    }
+    shouldHideUntilMessages() {
+        return this.config.hideUntilMessages !== false;
+    }
+    ensureUIInitialized() {
+        if (this.uiInitialized)
+            return;
+        this.initializeUI();
+        this.uiInitialized = true;
     }
     injectDebugMessages() {
         const mockMessages = createDebugMessages(this.config.entityType);
@@ -2840,6 +2856,9 @@ class JournyMessaging {
                 }
             }
             this.store.setState(updates);
+            if (newActiveCount > 0) {
+                this.ensureUIInitialized();
+            }
             if (!this.uiState.currentMessage && newActiveCount > 0) {
                 const savedMessageId = getItem(STORAGE_KEYS.CURRENT_MESSAGE_ID);
                 const allMessages = this.messageQueue.getAllMessages();
@@ -3059,6 +3078,7 @@ class JournyMessaging {
         this.eventTracker.destroy();
         this.store.destroy();
         this.uiRenderer.unmount();
+        this.uiInitialized = false;
         if (this.beforeUnloadHandler) {
             window.removeEventListener('beforeunload', this.beforeUnloadHandler);
             this.beforeUnloadHandler = null;
