@@ -1,6 +1,6 @@
 {
   "name": "@journyio/messaging-sdk",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "Journy In-App Messaging Library",
   "main": "dist/journy-messages.js",
   "module": "dist/journy-messages.esm.js",

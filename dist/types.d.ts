@@ -6,8 +6,9 @@ export declare enum SDKEventType {
 }
 export type MessageStatus = 'pending' | 'sent' | 'read' | 'expired';
 export type MessageScope = 'account' | 'user';
-export type AppDisplayMode = 'widget' | 'list';
+export type AppDisplayMode = 'widget' | 'list' | 'banner';
 export type RenderTarget = 'self' | 'parent' | 'top';
+export type BannerPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
 export interface Message {
     id: string;
     appId: string;
@@ -31,6 +32,12 @@ export interface WidgetSettings {
     showReadMessages: boolean;
     autoExpandOnNew: boolean;
     displayMode: AppDisplayMode;
+    bannerPosition: BannerPosition;
+    /**
+     * Auto-dismiss delay (ms) for banner mode. `0` disables auto-dismiss.
+     * Defaults to BANNER_AUTO_DISMISS_MS (20 000 ms).
+     */
+    bannerAutoDismissMs: number;
     apiEndpoint: string;
     styles: StylesConfig;
 }

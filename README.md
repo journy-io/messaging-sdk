@@ -225,6 +225,49 @@ const messaging = new JournyMessaging({
 | `styles` | `'default' \| 'none' \| { url: string } \| { css: string }` | No | `'default'` | Style injection mode |
 | `renderTarget` | `'self' \| 'parent' \| 'top'` | No | `'self'` | Which document to render the widget in (useful for iframes) |
 | `hideUntilMessages` | `boolean` | No | `true` | Keep the widget hidden until the first message has been fetched. Set to `false` to mount the widget shell immediately. |
+| `displayMode` | `'widget' \| 'list' \| 'banner'` | No | `'list'` | How messages are surfaced. See [Display Modes](#display-modes) below. |
+| `bannerPosition` | `'top-left' \| 'top-center' \| 'top-right' \| 'bottom-left' \| 'bottom-center' \| 'bottom-right'` | No | `'top-center'` | Anchor for `displayMode: 'banner'`. Ignored in other modes. |
+| `bannerAutoDismissMs` | `number` | No | `20000` | Auto-dismiss delay (ms) for banner mode. Set to `0` to keep the banner on screen until the user dismisses it manually. Ignored in other modes. |
+
+## Display Modes
+
+The SDK can surface messages in three different ways via `displayMode`:
+
+- **`'widget'`** — Compact, draggable single-message widget anchored to the
+  viewport. The user pages through messages with prev/next arrows. See
+  [`docs/widget-mode.md`](docs/widget-mode.md).
+- **`'list'`** *(default)* — Resizable scrollable panel listing all messages
+  at once. Best for dashboards and message-history surfaces. See
+  [`docs/list-mode.md`](docs/list-mode.md).
+- **`'banner'`** — Slim strip pinned to one of six viewport edges, showing
+  the current message and auto-dismissing after a configurable delay
+  (default **20 seconds**) without user interaction. Hovering pauses the
+  timer. Pair with `bannerPosition` to anchor it and `bannerAutoDismissMs`
+  to tune (or disable) the timer. See [`docs/banner-mode.md`](docs/banner-mode.md).
+
+```javascript
+// Banner pinned to the top-right that disappears after 30s
+const messaging = new JournyMessages({
+  writeKey: 'your-write-key',
+  entityType: 'user',
+  displayMode: 'banner',
+  bannerPosition: 'top-right',
+  bannerAutoDismissMs: 30000,
+});
+
+// Sticky banner — never auto-dismisses
+const sticky = new JournyMessages({
+  writeKey: 'your-write-key',
+  entityType: 'user',
+  displayMode: 'banner',
+  bannerAutoDismissMs: 0,
+});
+```
+
+End users can also switch modes, pick a banner position, and choose the
+auto-dismiss timing at runtime via the in-app debug Settings panel, when
+`window.__JOURNY_DEBUG__ = { settings: true }` is enabled before the SDK
+loads.
 
 ## API Reference
 
@@ -344,6 +387,57 @@ When using default styles, you can still customize by overriding these CSS class
 - `.journy-message-close` - Close button
 - `.journy-message-actions` - Action buttons container
 - `.journy-message-action` - Individual action button
+
+### Banner mode classes (`displayMode: 'banner'`)
+
+Banner mode renders outside the regular widget shell and exposes its own class set:
+
+- `.journy-message-banner` - The banner container (navy strip, `position: fixed`)
+- `.journy-message-banner-content` - Wraps the sanitized message HTML and timestamp
+- `.journy-message-banner-close` - The dismiss (×) button on the right edge
+- `.journy-message-banner-resize-handle` - Drag handle for resizing (combined
+  with a corner modifier: `--top-left`, `--top-right`, `--bottom-left`,
+  `--bottom-right`)
+- `.journy-message-banner-exiting` - Applied during the 200 ms fade-out
+  transition before the banner unmounts
+- `.journy-message-banner-resizing` - Applied while the user is dragging
+  the resize handle
+
+**Position modifiers** — one of these is applied alongside `.journy-message-banner`
+based on `bannerPosition`:
+
+- `.journy-message-banner-top-left`
+- `.journy-message-banner-top-center`
+- `.journy-message-banner-top-right`
+- `.journy-message-banner-bottom-left`
+- `.journy-message-banner-bottom-center`
+- `.journy-message-banner-bottom-right`
+
+**Animation** — `@keyframes journy-banner-fade-in` (opacity only) is shared by all
+six positions so the static `translateX(-50%)` on centered variants is preserved.
+Override or disable via the `animation` property on `.journy-message-banner`.
+
+**Mobile** — at `max-width: 640px` the banner stretches full-width minus 16 px
+gutters and the centered variants drop their `translateX`. Override in a more
+specific media query if you need different mobile behavior.
+
+Example — re-skin the banner to a brand red:
+
+```css
+.journy-message-banner {
+  background: #b91c1c;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.3);
+}
+
+.journy-message-banner .journy-message-content {
+  color: #fff;
+  font-weight: 500;
+}
+
+.journy-message-banner-close {
+  color: rgba(255, 255, 255, 0.85);
+}
+```
 
 ### Message Type Classes
 
