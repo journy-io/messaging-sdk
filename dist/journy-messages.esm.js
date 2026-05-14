@@ -28,10 +28,32 @@ class MessageQueue {
     }
     getNextMessage() {
         this.removeExpiredMessages();
-        if (this.queue.length === 0) {
-            return null;
+        for (const message of this.queue) {
+            if (!message.isBanner) {
+                return message;
+            }
         }
-        return this.queue[0];
+        return null;
+    }
+    getNextBanner() {
+        this.removeExpiredMessages();
+        for (const message of this.queue) {
+            if (message.isBanner && !message.received) {
+                return message;
+            }
+        }
+        return null;
+    }
+    getUnreadNonBannerCount() {
+        return this.queue.filter((m) => !m.isBanner && !m.received).length;
+    }
+    getNonBannerMessages() {
+        this.removeExpiredMessages();
+        return this.queue.filter((m) => !m.isBanner);
+    }
+    getBannerMessages() {
+        this.removeExpiredMessages();
+        return this.queue.filter((m) => m.isBanner === true);
     }
     getAlreadyReceivedIds(messageIds) {
         return messageIds.filter((id) => this.messageMap[id]?.received || this.readMessageIds.has(id));
@@ -89,11 +111,23 @@ class MessageQueue {
         });
     }
     updateMessageReceived(queueMessage, message) {
-        const updated = { ...queueMessage, received: message.received, expired: message.expired, status: message.status };
-        const idx = this.queue.indexOf(queueMessage);
+        // Preserve a local received:true — the server can briefly report received:false
+        // for a message we just marked locally while the markAsRead call is in flight.
+        // Letting that flip back to false re-triggers newNonBannerArrived in loadMessages,
+        // which reopens the closed widget and blocks any pending banner from surfacing.
+        const updated = {
+            ...queueMessage,
+            received: queueMessage.received || message.received,
+            expired: message.expired,
+            status: message.status,
+        };
+        // Look up by id rather than reference: markMessageAsReceived clones
+        // entries in queue/allFetchedMessages independently, so messageMap's
+        // reference may already be out of sync with those arrays.
+        const idx = this.queue.findIndex((m) => m.id === updated.id);
         if (idx !== -1)
             this.queue[idx] = updated;
-        const fetchedIdx = this.allFetchedMessages.indexOf(queueMessage);
+        const fetchedIdx = this.allFetchedMessages.findIndex((m) => m.id === updated.id);
         if (fetchedIdx !== -1)
             this.allFetchedMessages[fetchedIdx] = updated;
         this.messageMap[updated.id] = updated;
@@ -109,12 +143,6 @@ const REACT_WAIT_TIMEOUT = 10000;
 const MESSAGE_CLOSE_DELAY = 300;
 const BANNER_AUTO_DISMISS_MS = 20000;
 const BANNER_FADE_OUT_MS = 200;
-const BANNER_DEFAULT_WIDTH = 480;
-const BANNER_DEFAULT_HEIGHT = 64;
-const BANNER_MIN_WIDTH = 280;
-const BANNER_MIN_HEIGHT = 48;
-const BANNER_MAX_WIDTH_VW = 95;
-const BANNER_MAX_HEIGHT_VH = 70;
 const DEFAULT_WIDGET_SETTINGS = {
     pollingInterval: DEFAULT_POLLING_INTERVAL,
     showReadMessages: true,
@@ -454,7 +482,7 @@ function resolveRenderContext(target) {
     return { targetWindow: window, targetDocument: document, isRemote: false, sourceWindow };
 }
 
-var defaultStyles = "/* ============================================================\n   Journy Widget — Design Tokens\n   Brand palette derived from the Journy logo:\n     navy  (#102a43) — dark background / header\n     blue  (#528afa) — primary / ring\n     orange(#f2994a) — accent / center (compensating to blue)\n\n   Defined on every top-level SDK surface so popup/modal/banner\n   render correctly even when the widget shell is not present\n   (e.g. banner mode renders the message overlay outside\n   `.journy-message-widget`).\n   ============================================================ */\n#journy-messages-root,\n.journy-message-widget,\n.journy-message-banner,\n.journy-message-overlay,\n.journy-message-modal-overlay,\n.journy-banner-settings-host {\n  /* --- Brand --- */\n  --journy-navy:          #102a43;\n  --journy-blue:          #528afa;\n  --journy-blue-hover:    #3b6fd4;\n  --journy-orange:        #f2994a;\n  --journy-orange-hover:  #e07f2a;\n\n  /* --- Surface --- */\n  --journy-surface:       #ffffff;\n  --journy-surface-alt:   #f9fafb;\n  --journy-surface-hover: #f3f4f6;\n\n  /* --- Border --- */\n  --journy-border:        #e5e7eb;\n  --journy-border-strong: #d1d5db;\n\n  /* --- Text --- */\n  --journy-text-primary:  #111827;\n  --journy-text-secondary:#374151;\n  --journy-text-muted:    #6b7280;\n  --journy-text-subtle:   #9ca3af;\n\n  /* --- On-header (text/icons over navy bg) --- */\n  --journy-on-header:           #ffffff;\n  --journy-on-header-muted:     rgba(255, 255, 255, 0.7);\n  --journy-on-header-btn:       rgba(255, 255, 255, 0.85);\n  --journy-on-header-btn-hover: rgba(255, 255, 255, 0.2);\n\n  /* --- Semantic --- */\n  --journy-info:    #528afa;\n  --journy-success: #10b981;\n  --journy-warning: #f59e0b;\n  --journy-error:   #ef4444;\n  --journy-viewed:  #6b7280;\n\n  /* --- Shadow / Overlay --- */\n  --journy-shadow-sm:  0 4px 20px rgba(0, 0, 0, 0.15);\n  --journy-shadow-md:  0 4px 24px rgba(0, 0, 0, 0.2);\n  --journy-overlay-bg: rgba(0, 0, 0, 0.5);\n}\n\n/* ============================================================\n   Widget Container\n   ============================================================ */\n.journy-message-widget {\n  position: fixed;\n  z-index: 10000;\n  background: var(--journy-surface);\n  border-radius: 12px;\n  box-shadow: var(--journy-shadow-sm);\n  overflow: hidden;\n  user-select: none;\n  transform-origin: bottom right;\n}\n\n.journy-message-widget.journy-message-widget-dragging {\n  cursor: grabbing;\n  transition: none;\n  z-index: 10001;\n}\n\n.journy-message-widget.journy-message-widget-expanded {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n}\n\n.journy-message-widget.journy-message-widget-resizing {\n  transition: none;\n}\n\n/* Expand/collapse: height and top are animated via inline transition so bottom-right stays fixed */\n\n/* ============================================================\n   Widget Header\n   ============================================================ */\n.journy-message-widget-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: var(--journy-navy);\n  border-bottom: none;\n  user-select: none;\n  cursor: grab;\n}\n\n.journy-message-widget-header:active {\n  cursor: grabbing;\n}\n\n.journy-message-widget-drag-handle {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 4px 8px;\n  margin-right: 8px;\n  cursor: grab;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-drag-handle svg {\n  display: block;\n}\n\n.journy-message-widget-header-content {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  flex: 1;\n  min-width: 0;\n  cursor: inherit;\n}\n\n.journy-message-widget-collapsed .journy-message-widget-header-content {\n  cursor: pointer;\n}\n\n/* ============================================================\n   Collapsed pill mode\n   ============================================================ */\n.journy-message-widget-collapsed {\n  border-radius: 24px;\n  background: var(--journy-navy);\n}\n\n.journy-message-widget-header--pill {\n  background: var(--journy-navy);\n  padding: 6px 6px 6px 10px;\n  gap: 6px;\n  border-bottom: none;\n}\n\n.journy-message-widget-header--pill .journy-message-widget-drag-handle {\n  padding: 2px 4px;\n  margin-right: 0;\n}\n\n.journy-message-widget-logo-wrapper {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-logo-badge {\n  position: absolute;\n  top: -5px;\n  right: -5px;\n  min-width: 15px;\n  height: 15px;\n  background: var(--journy-orange);\n  color: #fff;\n  border-radius: 8px;\n  font-size: 9px;\n  font-weight: 700;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0 3px;\n  border: 1.5px solid var(--journy-navy);\n  pointer-events: none;\n}\n\n.journy-message-widget-pill-title {\n  font-size: 13px;\n  font-weight: 600;\n  color: var(--journy-on-header);\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.journy-message-widget-avatar-slot {\n  width: 28px;\n  height: 28px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-close--pill {\n  opacity: 0;\n  color: var(--journy-on-header-btn) !important;\n  background: transparent !important;\n  border-radius: 50% !important;\n  width: 26px !important;\n  height: 26px !important;\n  font-size: 18px !important;\n  transition: opacity 0.2s, background-color 0.2s !important;\n}\n\n.journy-message-widget-collapsed:hover .journy-message-widget-close--pill {\n  opacity: 1;\n}\n\n.journy-message-widget-close--pill:hover {\n  background: var(--journy-on-header-btn-hover) !important;\n  color: var(--journy-on-header) !important;\n}\n\n.journy-message-widget-badge {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-width: 24px;\n  height: 24px;\n  padding: 0 8px;\n  background: var(--journy-orange);\n  color: var(--journy-on-header);\n  border-radius: 12px;\n  font-size: 12px;\n  font-weight: 600;\n  transition: background-color 0.2s;\n}\n\n.journy-message-widget-badge:hover {\n  background: var(--journy-blue);\n}\n\n.journy-message-widget-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: var(--journy-on-header);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.journy-message-widget-read-count {\n  font-size: 12px;\n  color: var(--journy-on-header-muted);\n  font-weight: 400;\n}\n\n.journy-message-widget-controls {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.journy-message-widget-toggle,\n.journy-message-widget-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-on-header-btn);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-toggle:hover,\n.journy-message-widget-close:hover {\n  background-color: var(--journy-on-header-btn-hover);\n  color: var(--journy-on-header);\n}\n\n.journy-message-widget-settings-btn {\n  background: none;\n  border: none;\n  font-size: 16px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-on-header-btn);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-settings-btn:hover {\n  background-color: var(--journy-on-header-btn-hover);\n  color: var(--journy-on-header);\n}\n\n/* ============================================================\n   Widget Content\n   ============================================================ */\n.journy-message-widget-content {\n  padding: 16px;\n  flex: 1;\n  overflow-y: auto;\n  overflow-x: hidden;\n  min-height: 0;\n}\n\n.journy-message-widget-content--single {\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message {\n  flex: 1;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message .journy-message-content {\n  flex: 1;\n  min-height: 0;\n  overflow: hidden;\n}\n\n/* ============================================================\n   Resize Handle\n   ============================================================ */\n.journy-message-widget-resize-handle {\n  position: absolute;\n  bottom: 0;\n  right: 0;\n  width: 20px;\n  height: 20px;\n  cursor: nwse-resize;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, var(--journy-border) 40%, var(--journy-border) 100%);\n  z-index: 10;\n  transition: background 0.2s;\n}\n\n.journy-message-widget-resize-handle:hover {\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, var(--journy-border-strong) 40%, var(--journy-border-strong) 100%);\n}\n\n.journy-message-widget-resize-handle svg {\n  width: 12px;\n  height: 12px;\n  opacity: 0.6;\n}\n\n.journy-message-widget-resize-handle:hover svg {\n  opacity: 1;\n}\n\n/* ============================================================\n   Messages\n   ============================================================ */\n.journy-message-widget-message {\n  padding: 0;\n  position: relative;\n  transition: border-color 0.6s ease;\n}\n\n/* In single mode, constrain message content to fill available space with overflow hidden */\n.journy-message-widget-content--single .journy-message-widget-message {\n  overflow: hidden;\n}\n\n.journy-message-widget-message-close {\n  position: absolute;\n  top: 4px;\n  right: 4px;\n  width: 24px;\n  height: 24px;\n  padding: 0;\n  border: none;\n  background: transparent;\n  color: var(--journy-text-muted);\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transition: background-color 0.2s, color 0.2s;\n  z-index: 1;\n}\n\n.journy-message-widget-message-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-widget-message:has(.journy-message-widget-message-close) .journy-message-content {\n  padding-right: 28px;\n}\n\n.journy-message-widget-nav {\n  background: none;\n  border: none;\n  font-size: 16px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 2px 6px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 24px;\n  height: 24px;\n}\n\n.journy-message-widget-nav:hover:not(:disabled) {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-widget-nav:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.journy-message-widget-message-separated {\n  margin-bottom: 24px;\n  padding-bottom: 24px;\n  border-bottom: 1px solid var(--journy-border);\n}\n\n.journy-message-widget-message-count {\n  font-size: 12px;\n  color: var(--journy-on-header-muted);\n  font-weight: 400;\n  margin-left: 8px;\n  white-space: nowrap;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-position {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  padding: 4px 12px;\n  font-size: 11px;\n  color: var(--journy-text-subtle);\n  font-weight: 500;\n  flex-shrink: 0;\n  border-top: 1px solid var(--journy-border);\n}\n\n.journy-message-widget-position-text {\n  min-width: 32px;\n  text-align: center;\n}\n\n.journy-message-widget-message.journy-message-info {\n  border-left: 4px solid var(--journy-info);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-success {\n  border-left: 4px solid var(--journy-success);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-warning {\n  border-left: 4px solid var(--journy-warning);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-error {\n  border-left: 4px solid var(--journy-error);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-viewed {\n  border-left: 4px solid var(--journy-viewed);\n  padding-left: 12px;\n}\n\n/* ============================================================\n   Message Modal (80vw × 60vh)\n   ============================================================ */\n.journy-message-modal-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: var(--journy-overlay-bg);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10002;\n  padding: 20px;\n}\n\n.journy-message-modal {\n  width: 80vw;\n  max-width: 80vw;\n  height: 60vh;\n  max-height: 60vh;\n  background: var(--journy-surface);\n  border-radius: 12px;\n  box-shadow: var(--journy-shadow-md);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  position: relative;\n}\n\n.journy-message-modal-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 16px 24px;\n  background: var(--journy-surface-alt);\n  border-bottom: 1px solid var(--journy-border);\n  flex-shrink: 0;\n}\n\n.journy-message-modal-title {\n  font-size: 18px;\n  font-weight: 600;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-modal-close {\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-modal-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-modal .journy-message-widget-message {\n  padding: 24px;\n  overflow-y: auto;\n  flex: 1;\n  min-height: 0;\n}\n\n/* ============================================================\n   Timestamp\n   ============================================================ */\n/* Overlay at the bottom of each message card (single mode only) */\n.journy-message-widget-content--single .journy-message-timestamp {\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n  padding: 32px 12px 8px 12px;\n  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,1) 60%);\n  font-size: 12px;\n  color: var(--journy-text-muted);\n  line-height: 1.4;\n  pointer-events: none;\n  z-index: 2;\n}\n\n/* Flows naturally in list mode */\n.journy-message-widget-content:not(.journy-message-widget-content--single) .journy-message-timestamp {\n  font-size: 12px;\n  color: var(--journy-text-muted);\n  line-height: 1.4;\n  margin-top: 6px;\n}\n\n.journy-message-content-clickable {\n  cursor: pointer;\n}\n\n.journy-message-content-clickable:hover {\n  opacity: 0.95;\n}\n\n/* ============================================================\n   Legacy Modal Overlay (kept for backward compatibility)\n   ============================================================ */\n.journy-message-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: var(--journy-overlay-bg);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10000;\n  opacity: 0;\n  transition: opacity 0.3s ease-in-out;\n  pointer-events: none;\n}\n\n.journy-message-overlay.journy-message-visible {\n  opacity: 1;\n  pointer-events: all;\n}\n\n.journy-message-popup {\n  background: var(--journy-surface);\n  border-radius: 8px;\n  padding: 24px;\n  max-width: 500px;\n  width: 90%;\n  max-height: 80vh;\n  display: flex;\n  flex-direction: column;\n  box-shadow: var(--journy-shadow-sm);\n  position: relative;\n  transform: scale(0.9);\n  transition: transform 0.3s ease-in-out, border-color 0.6s ease;\n}\n\n.journy-message-popup .journy-message-content {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow-y: auto;\n}\n\n.journy-message-overlay.journy-message-visible .journy-message-popup {\n  transform: scale(1);\n}\n\n.journy-message-popup.journy-message-info    { border-top: 4px solid var(--journy-info); }\n.journy-message-popup.journy-message-success { border-top: 4px solid var(--journy-success); }\n.journy-message-popup.journy-message-warning { border-top: 4px solid var(--journy-warning); }\n.journy-message-popup.journy-message-error   { border-top: 4px solid var(--journy-error); }\n.journy-message-popup.journy-message-viewed  { border-top: 4px solid var(--journy-viewed); }\n\n.journy-message-close {\n  position: absolute;\n  top: 12px;\n  right: 12px;\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-close:hover {\n  background-color: var(--journy-surface-hover);\n  color: var(--journy-text-secondary);\n}\n\n/* ============================================================\n   Message Content\n   ============================================================ */\n.journy-message-title {\n  font-size: 20px;\n  font-weight: 600;\n  margin-bottom: 12px;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-content {\n  font-size: 16px;\n  line-height: 1.6;\n  color: var(--journy-text-secondary);\n  margin-bottom: 16px;\n}\n\n.journy-message-content a {\n  color: var(--journy-blue);\n  text-decoration: underline;\n  transition: color 0.2s;\n}\n\n.journy-message-content a:hover {\n  color: var(--journy-blue-hover);\n}\n\n.journy-message-content p {\n  margin: 0 0 12px 0;\n}\n\n.journy-message-content p:last-child {\n  margin-bottom: 0;\n}\n\n.journy-message-content ul,\n.journy-message-content ol {\n  margin: 12px 0;\n  padding-left: 24px;\n}\n\n.journy-message-content li {\n  margin-bottom: 8px;\n}\n\n/* Headings */\n.journy-message-content h1,\n.journy-message-content h2,\n.journy-message-content h3,\n.journy-message-content h4,\n.journy-message-content h5,\n.journy-message-content h6 {\n  margin: 16px 0 12px 0;\n  font-weight: 600;\n  line-height: 1.3;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-content h1 { font-size: 24px; }\n.journy-message-content h2 { font-size: 20px; }\n.journy-message-content h3 { font-size: 18px; }\n.journy-message-content h4 { font-size: 16px; }\n.journy-message-content h5,\n.journy-message-content h6 { font-size: 14px; }\n\n/* Code */\n.journy-message-content code {\n  background-color: var(--journy-surface-hover);\n  color: var(--journy-error);\n  padding: 2px 6px;\n  border-radius: 4px;\n  font-size: 0.9em;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n}\n\n.journy-message-content pre {\n  background-color: var(--journy-navy);\n  color: var(--journy-surface-alt);\n  padding: 16px;\n  border-radius: 8px;\n  overflow-x: auto;\n  margin: 12px 0;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n  font-size: 14px;\n  line-height: 1.5;\n}\n\n.journy-message-content pre code {\n  background-color: transparent;\n  color: inherit;\n  padding: 0;\n  border-radius: 0;\n  font-size: inherit;\n}\n\n/* Text formatting */\n.journy-message-content u              { text-decoration: underline; }\n.journy-message-content s,\n.journy-message-content strike,\n.journy-message-content del            { text-decoration: line-through; }\n.journy-message-content strong         { font-weight: 600; }\n.journy-message-content em             { font-style: italic; }\n\n/* Blockquotes */\n.journy-message-content blockquote {\n  border-left: 4px solid var(--journy-border);\n  padding-left: 16px;\n  margin: 12px 0;\n  color: var(--journy-text-muted);\n  font-style: italic;\n}\n\n/* Tables */\n.journy-message-content table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 12px 0;\n}\n\n.journy-message-content th,\n.journy-message-content td {\n  border: 1px solid var(--journy-border);\n  padding: 8px 12px;\n  text-align: left;\n}\n\n.journy-message-content th {\n  background-color: var(--journy-surface-alt);\n  font-weight: 600;\n}\n\n/* Horizontal rule */\n.journy-message-content hr {\n  border: none;\n  border-top: 1px solid var(--journy-border);\n  margin: 16px 0;\n}\n\n/* ============================================================\n   Actions\n   ============================================================ */\n.journy-message-actions {\n  display: flex;\n  gap: 12px;\n  margin-top: 20px;\n  flex-wrap: wrap;\n}\n\n.journy-message-action {\n  padding: 10px 20px;\n  border-radius: 6px;\n  font-size: 14px;\n  font-weight: 500;\n  cursor: pointer;\n  border: none;\n  transition: all 0.2s;\n}\n\n.journy-message-action-primary {\n  background-color: var(--journy-blue);\n  color: var(--journy-on-header);\n}\n\n.journy-message-action-primary:hover {\n  background-color: var(--journy-blue-hover);\n}\n\n.journy-message-action-secondary {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-action-secondary:hover {\n  background-color: var(--journy-border-strong);\n}\n\n.journy-message-action-link {\n  background: none;\n  color: var(--journy-blue);\n  text-decoration: underline;\n  padding: 10px 0;\n}\n\n.journy-message-action-link:hover {\n  color: var(--journy-blue-hover);\n}\n\n/* ============================================================\n   Settings Panel\n   ============================================================ */\n.journy-settings-panel {\n  position: absolute;\n  top: 0;\n  right: 0;\n  bottom: 0;\n  width: 100%;\n  background: var(--journy-surface);\n  z-index: 10;\n  display: flex;\n  flex-direction: column;\n  transform: translateX(100%);\n  transition: transform 0.3s ease;\n}\n\n.journy-settings-panel-open  { transform: translateX(0); }\n.journy-settings-panel-closed { transform: translateX(100%); }\n\n.journy-settings-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: var(--journy-surface-alt);\n  border-bottom: 1px solid var(--journy-border);\n  flex-shrink: 0;\n}\n\n.journy-settings-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: var(--journy-text-primary);\n}\n\n.journy-settings-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-settings-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-settings-body {\n  padding: 16px;\n  overflow-y: auto;\n  flex: 1;\n}\n\n.journy-settings-item {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 0;\n  border-bottom: 1px solid var(--journy-surface-hover);\n}\n\n.journy-settings-item:last-child {\n  border-bottom: none;\n}\n\n.journy-settings-label {\n  font-size: 13px;\n  font-weight: 500;\n  color: var(--journy-text-secondary);\n}\n\n.journy-settings-select {\n  padding: 6px 10px;\n  border: 1px solid var(--journy-border-strong);\n  border-radius: 6px;\n  font-size: 13px;\n  color: var(--journy-text-secondary);\n  background: var(--journy-surface);\n  cursor: pointer;\n  outline: none;\n  transition: border-color 0.2s;\n}\n\n.journy-settings-select:focus {\n  border-color: var(--journy-blue);\n}\n\n.journy-settings-toggle {\n  position: relative;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  border: none;\n  background: var(--journy-border-strong);\n  cursor: pointer;\n  padding: 0;\n  transition: background-color 0.2s;\n  flex-shrink: 0;\n}\n\n.journy-settings-toggle-on {\n  background: var(--journy-blue);\n}\n\n.journy-settings-toggle-knob {\n  position: absolute;\n  top: 2px;\n  left: 2px;\n  width: 18px;\n  height: 18px;\n  border-radius: 50%;\n  background: var(--journy-surface);\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);\n  transition: transform 0.2s;\n}\n\n.journy-settings-toggle-on .journy-settings-toggle-knob {\n  transform: translateX(18px);\n}\n\n.journy-settings-item-vertical {\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 6px;\n}\n\n.journy-settings-input {\n  width: 100%;\n  padding: 6px 10px;\n  border: 1px solid var(--journy-border-strong);\n  border-radius: 6px;\n  font-size: 13px;\n  color: var(--journy-text-secondary);\n  background: var(--journy-surface);\n  outline: none;\n  transition: border-color 0.2s;\n  box-sizing: border-box;\n}\n\n.journy-settings-input:focus {\n  border-color: var(--journy-blue);\n}\n\n.journy-settings-input::placeholder {\n  color: var(--journy-text-subtle);\n}\n\n.journy-settings-value {\n  font-size: 13px;\n  color: var(--journy-text-muted);\n  font-weight: 400;\n  max-width: 60%;\n  text-align: right;\n  word-break: break-all;\n}\n\n.journy-message-widget-empty {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: var(--journy-text-subtle);\n  font-size: 14px;\n  flex: 1;\n  min-height: 80px;\n}\n\n.journy-settings-advanced-btn {\n  background: none;\n  border: none;\n  font-size: 13px;\n  font-weight: 500;\n  color: var(--journy-text-muted);\n  cursor: pointer;\n  padding: 0;\n  transition: color 0.2s;\n}\n\n.journy-settings-advanced-btn:hover {\n  color: var(--journy-text-secondary);\n}\n\n.journy-settings-footer {\n  display: flex;\n  justify-content: flex-end;\n  gap: 8px;\n  padding: 12px 16px;\n  background: var(--journy-surface-alt);\n  border-top: 1px solid var(--journy-border);\n  flex-shrink: 0;\n}\n\n.journy-settings-btn {\n  padding: 6px 16px;\n  border-radius: 6px;\n  font-size: 13px;\n  font-weight: 500;\n  cursor: pointer;\n  border: 1px solid transparent;\n  transition: background-color 0.2s, border-color 0.2s, color 0.2s, opacity 0.2s;\n}\n\n.journy-settings-btn-primary {\n  background: var(--journy-blue);\n  color: var(--journy-on-header);\n}\n\n.journy-settings-btn-primary:hover:not(:disabled) {\n  background: var(--journy-blue-hover);\n}\n\n.journy-settings-btn-primary:disabled {\n  opacity: 0.5;\n  cursor: not-allowed;\n}\n\n.journy-settings-btn-secondary {\n  background: var(--journy-surface);\n  color: var(--journy-text-secondary);\n  border-color: var(--journy-border-strong);\n}\n\n.journy-settings-btn-secondary:hover {\n  background: var(--journy-surface-hover);\n}\n\n/* ============================================================\n   Banner Mode\n   ============================================================ */\n.journy-message-banner {\n  position: fixed;\n  z-index: 10000;\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  padding: 12px 16px;\n  background: var(--journy-navy);\n  color: var(--journy-on-header);\n  border-radius: 10px;\n  box-shadow: var(--journy-shadow-md);\n  max-width: calc(100vw - 32px);\n  font-size: 14px;\n  line-height: 1.4;\n  opacity: 1;\n  transition: opacity 200ms ease-out;\n  user-select: none;\n}\n\n.journy-message-banner.journy-message-banner-exiting {\n  opacity: 0;\n  pointer-events: none;\n}\n\n.journy-message-banner.journy-message-banner-resizing {\n  transition: none;\n}\n\n.journy-message-banner-resize-handle {\n  position: absolute;\n  width: 14px;\n  height: 14px;\n  cursor: nwse-resize;\n  background: transparent;\n  z-index: 1;\n  border-radius: 4px;\n  transition: background-color 0.2s;\n}\n\n.journy-message-banner-resize-handle:hover,\n.journy-message-banner.journy-message-banner-resizing .journy-message-banner-resize-handle {\n  background: var(--journy-on-header-btn-hover);\n}\n\n.journy-message-banner-resize-handle--bottom-right {\n  bottom: 2px;\n  right: 2px;\n  cursor: nwse-resize;\n}\n\n.journy-message-banner-resize-handle--bottom-left {\n  bottom: 2px;\n  left: 2px;\n  cursor: nesw-resize;\n}\n\n.journy-message-banner-resize-handle--top-right {\n  top: 2px;\n  right: 2px;\n  cursor: nesw-resize;\n}\n\n.journy-message-banner-resize-handle--top-left {\n  top: 2px;\n  left: 2px;\n  cursor: nwse-resize;\n}\n\n.journy-message-banner .journy-message-content {\n  margin: 0;\n  font-size: 14px;\n  color: var(--journy-on-header);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  display: -webkit-box;\n  -webkit-line-clamp: 2;\n  -webkit-box-orient: vertical;\n}\n\n/* Headings, paragraphs, list items, etc. inside the message HTML default to\n   dark text via the popup-scoped rules — force them to the on-header palette\n   when rendered on the navy banner background so the content stays legible. */\n.journy-message-banner .journy-message-content,\n.journy-message-banner .journy-message-content h1,\n.journy-message-banner .journy-message-content h2,\n.journy-message-banner .journy-message-content h3,\n.journy-message-banner .journy-message-content h4,\n.journy-message-banner .journy-message-content h5,\n.journy-message-banner .journy-message-content h6,\n.journy-message-banner .journy-message-content p,\n.journy-message-banner .journy-message-content li,\n.journy-message-banner .journy-message-content strong,\n.journy-message-banner .journy-message-content em,\n.journy-message-banner .journy-message-content u,\n.journy-message-banner .journy-message-content s {\n  color: var(--journy-on-header);\n}\n\n.journy-message-banner .journy-message-content blockquote {\n  color: var(--journy-on-header-muted);\n  border-left-color: var(--journy-on-header-btn-hover);\n}\n\n.journy-message-banner .journy-message-content code {\n  color: var(--journy-on-header);\n  background-color: var(--journy-on-header-btn-hover);\n}\n\n.journy-message-banner .journy-message-content pre {\n  background-color: rgba(0, 0, 0, 0.25);\n  color: var(--journy-on-header);\n}\n\n.journy-message-banner .journy-message-content a {\n  color: var(--journy-on-header);\n  text-decoration: underline;\n}\n\n.journy-message-banner .journy-message-content a:hover {\n  color: var(--journy-on-header-muted);\n}\n\n.journy-message-banner .journy-message-timestamp {\n  font-size: 11px;\n  color: var(--journy-on-header-muted);\n  margin-top: 2px;\n}\n\n.journy-message-banner-content {\n  flex: 1;\n  min-width: 0;\n  cursor: pointer;\n}\n\n.journy-message-banner-close {\n  flex-shrink: 0;\n  background: none;\n  border: none;\n  font-size: 20px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-on-header-btn);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-banner-close:hover {\n  background-color: var(--journy-on-header-btn-hover);\n  color: var(--journy-on-header);\n}\n\n/* Position modifiers — animate opacity only so the static transform\n   (centering) isn't fought by the keyframe. */\n.journy-message-banner-top-left,\n.journy-message-banner-top-center,\n.journy-message-banner-top-right,\n.journy-message-banner-bottom-left,\n.journy-message-banner-bottom-center,\n.journy-message-banner-bottom-right {\n  animation: journy-banner-fade-in 0.25s ease-out;\n}\n\n.journy-message-banner-top-left    { top: 16px;    left: 16px; }\n.journy-message-banner-top-right   { top: 16px;    right: 16px; }\n.journy-message-banner-bottom-left { bottom: 16px; left: 16px; }\n.journy-message-banner-bottom-right{ bottom: 16px; right: 16px; }\n\n.journy-message-banner-top-center {\n  top: 16px;\n  left: 50%;\n  transform: translateX(-50%);\n}\n\n.journy-message-banner-bottom-center {\n  bottom: 16px;\n  left: 50%;\n  transform: translateX(-50%);\n}\n\n@keyframes journy-banner-fade-in {\n  from { opacity: 0; }\n  to   { opacity: 1; }\n}\n\n/* Debug-only settings host — keeps the SettingsPanel reachable in banner mode\n   where the widget shell (and its gear button) is not rendered. The explicit\n   height is required because the panel inside uses `position: absolute; inset: 0`\n   and would otherwise collapse to zero, hiding the panel content under\n   `overflow: hidden`. The host itself stays click-through so it doesn't\n   block the page when the panel is closed. */\n.journy-banner-settings-host {\n  position: fixed;\n  bottom: 16px;\n  right: 16px;\n  width: 320px;\n  height: min(560px, calc(100vh - 32px));\n  z-index: 10001;\n  background: transparent;\n  pointer-events: none;\n}\n\n.journy-banner-settings-host .journy-settings-panel {\n  pointer-events: auto;\n  position: absolute;\n  inset: 0;\n  background: var(--journy-surface);\n  border-radius: 12px;\n  box-shadow: var(--journy-shadow-md);\n  overflow: hidden;\n}\n\n.journy-banner-settings-trigger {\n  pointer-events: auto;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n  width: 40px;\n  height: 40px;\n  border: none;\n  border-radius: 50%;\n  background: var(--journy-navy);\n  color: var(--journy-on-header);\n  font-size: 20px;\n  line-height: 1;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  box-shadow: var(--journy-shadow-sm);\n  transition: background-color 0.2s, transform 0.2s;\n}\n\n.journy-banner-settings-trigger:hover {\n  background: var(--journy-blue);\n  transform: scale(1.05);\n}\n\n/* ============================================================\n   Responsive\n   ============================================================ */\n@media (max-width: 640px) {\n  .journy-message-widget {\n    min-width: calc(100vw - 32px);\n    max-width: calc(100vw - 32px);\n    left: 16px !important;\n    right: 16px !important;\n  }\n\n  .journy-message-popup {\n    width: 95%;\n    padding: 20px;\n  }\n\n  .journy-message-title {\n    font-size: 18px;\n  }\n\n  .journy-message-content {\n    font-size: 14px;\n  }\n\n  .journy-message-actions {\n    flex-direction: column;\n  }\n\n  .journy-message-action {\n    width: 100%;\n  }\n\n  .journy-message-banner {\n    max-width: calc(100vw - 32px);\n  }\n\n  .journy-message-banner-top-left,\n  .journy-message-banner-top-right,\n  .journy-message-banner-bottom-left,\n  .journy-message-banner-bottom-right {\n    left: 16px;\n    right: 16px;\n  }\n\n  .journy-message-banner-top-center,\n  .journy-message-banner-bottom-center {\n    left: 16px;\n    right: 16px;\n    transform: none;\n  }\n}\n";
+var defaultStyles = "/* ============================================================\n   Journy Widget — Design Tokens\n   Brand palette derived from the Journy logo:\n     navy  (#102a43) — dark background / header\n     blue  (#528afa) — primary / ring\n     orange(#f2994a) — accent / center (compensating to blue)\n\n   Defined on every top-level SDK surface so popup/modal/banner\n   render correctly even when the widget shell is not present\n   (e.g. banner mode renders the message overlay outside\n   `.journy-message-widget`).\n   ============================================================ */\n#journy-messages-root,\n.journy-message-widget,\n.journy-message-banner,\n.journy-message-overlay,\n.journy-message-modal-overlay,\n.journy-banner-settings-host {\n  /* --- Brand --- */\n  --journy-navy:          #102a43;\n  --journy-blue:          #528afa;\n  --journy-blue-hover:    #3b6fd4;\n  --journy-orange:        #f2994a;\n  --journy-orange-hover:  #e07f2a;\n\n  /* --- Surface --- */\n  --journy-surface:       #ffffff;\n  --journy-surface-alt:   #f9fafb;\n  --journy-surface-hover: #f3f4f6;\n\n  /* --- Border --- */\n  --journy-border:        #e5e7eb;\n  --journy-border-strong: #d1d5db;\n\n  /* --- Text --- */\n  --journy-text-primary:  #111827;\n  --journy-text-secondary:#374151;\n  --journy-text-muted:    #6b7280;\n  --journy-text-subtle:   #9ca3af;\n\n  /* --- On-header (text/icons over navy bg) --- */\n  --journy-on-header:           #ffffff;\n  --journy-on-header-muted:     rgba(255, 255, 255, 0.7);\n  --journy-on-header-btn:       rgba(255, 255, 255, 0.85);\n  --journy-on-header-btn-hover: rgba(255, 255, 255, 0.2);\n\n  /* --- Semantic --- */\n  --journy-info:    #528afa;\n  --journy-success: #10b981;\n  --journy-warning: #f59e0b;\n  --journy-error:   #ef4444;\n  --journy-viewed:  #6b7280;\n\n  /* --- Shadow / Overlay --- */\n  --journy-shadow-sm:  0 4px 20px rgba(0, 0, 0, 0.15);\n  --journy-shadow-md:  0 4px 24px rgba(0, 0, 0, 0.2);\n  --journy-overlay-bg: rgba(0, 0, 0, 0.5);\n}\n\n/* ============================================================\n   Widget Container\n   ============================================================ */\n.journy-message-widget {\n  position: fixed;\n  z-index: 10000;\n  background: var(--journy-surface);\n  border-radius: 12px;\n  box-shadow: var(--journy-shadow-sm);\n  overflow: hidden;\n  user-select: none;\n  transform-origin: bottom right;\n}\n\n.journy-message-widget.journy-message-widget-dragging {\n  cursor: grabbing;\n  transition: none;\n  z-index: 10001;\n}\n\n.journy-message-widget.journy-message-widget-expanded {\n  display: flex;\n  flex-direction: column;\n  min-height: 0;\n}\n\n.journy-message-widget.journy-message-widget-resizing {\n  transition: none;\n}\n\n/* Expand/collapse: height and top are animated via inline transition so bottom-right stays fixed */\n\n/* ============================================================\n   Widget Header\n   ============================================================ */\n.journy-message-widget-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: var(--journy-navy);\n  border-bottom: none;\n  user-select: none;\n  cursor: grab;\n}\n\n.journy-message-widget-header:active {\n  cursor: grabbing;\n}\n\n.journy-message-widget-drag-handle {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 4px 8px;\n  margin-right: 8px;\n  cursor: grab;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-drag-handle svg {\n  display: block;\n}\n\n.journy-message-widget-header-content {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  flex: 1;\n  min-width: 0;\n  cursor: inherit;\n}\n\n.journy-message-widget-collapsed .journy-message-widget-header-content {\n  cursor: pointer;\n}\n\n/* ============================================================\n   Collapsed pill mode\n   ============================================================ */\n.journy-message-widget-collapsed {\n  border-radius: 24px;\n  background: var(--journy-navy);\n}\n\n.journy-message-widget-header--pill {\n  background: var(--journy-navy);\n  padding: 6px 6px 6px 10px;\n  gap: 6px;\n  border-bottom: none;\n}\n\n.journy-message-widget-header--pill .journy-message-widget-drag-handle {\n  padding: 2px 4px;\n  margin-right: 0;\n}\n\n.journy-message-widget-logo-wrapper {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-logo-badge {\n  position: absolute;\n  top: -5px;\n  right: -5px;\n  min-width: 15px;\n  height: 15px;\n  background: var(--journy-orange);\n  color: #fff;\n  border-radius: 8px;\n  font-size: 9px;\n  font-weight: 700;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 0 3px;\n  border: 1.5px solid var(--journy-navy);\n  pointer-events: none;\n}\n\n.journy-message-widget-pill-title {\n  font-size: 13px;\n  font-weight: 600;\n  color: var(--journy-on-header);\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.journy-message-widget-avatar-slot {\n  width: 28px;\n  height: 28px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-close--pill {\n  opacity: 0;\n  color: var(--journy-on-header-btn) !important;\n  background: transparent !important;\n  border-radius: 50% !important;\n  width: 26px !important;\n  height: 26px !important;\n  font-size: 18px !important;\n  transition: opacity 0.2s, background-color 0.2s !important;\n}\n\n.journy-message-widget-collapsed:hover .journy-message-widget-close--pill {\n  opacity: 1;\n}\n\n.journy-message-widget-close--pill:hover {\n  background: var(--journy-on-header-btn-hover) !important;\n  color: var(--journy-on-header) !important;\n}\n\n.journy-message-widget-badge {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-width: 24px;\n  height: 24px;\n  padding: 0 8px;\n  background: var(--journy-orange);\n  color: var(--journy-on-header);\n  border-radius: 12px;\n  font-size: 12px;\n  font-weight: 600;\n  transition: background-color 0.2s;\n}\n\n.journy-message-widget-badge:hover {\n  background: var(--journy-blue);\n}\n\n.journy-message-widget-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: var(--journy-on-header);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.journy-message-widget-read-count {\n  font-size: 12px;\n  color: var(--journy-on-header-muted);\n  font-weight: 400;\n}\n\n.journy-message-widget-controls {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.journy-message-widget-toggle,\n.journy-message-widget-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-on-header-btn);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-toggle:hover,\n.journy-message-widget-close:hover {\n  background-color: var(--journy-on-header-btn-hover);\n  color: var(--journy-on-header);\n}\n\n.journy-message-widget-settings-btn {\n  background: none;\n  border: none;\n  font-size: 16px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-on-header-btn);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-widget-settings-btn:hover {\n  background-color: var(--journy-on-header-btn-hover);\n  color: var(--journy-on-header);\n}\n\n/* ============================================================\n   Widget Content\n   ============================================================ */\n.journy-message-widget-content {\n  padding: 16px;\n  flex: 1;\n  overflow-y: auto;\n  overflow-x: hidden;\n  min-height: 0;\n  scrollbar-width: thin;\n  scrollbar-color: var(--journy-border-strong) transparent;\n}\n\n.journy-message-widget-content::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n\n.journy-message-widget-content::-webkit-scrollbar-track {\n  background: transparent;\n}\n\n.journy-message-widget-content::-webkit-scrollbar-thumb {\n  background-color: var(--journy-border-strong);\n  border-radius: 4px;\n  border: 2px solid transparent;\n  background-clip: padding-box;\n}\n\n.journy-message-widget-content::-webkit-scrollbar-thumb:hover {\n  background-color: var(--journy-text-muted);\n}\n\n.journy-message-widget-content--single {\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message {\n  flex: 1;\n  min-height: 0;\n  display: flex;\n  flex-direction: column;\n}\n\n.journy-message-widget-content--single .journy-message-widget-message .journy-message-content {\n  flex: 1;\n  min-height: 0;\n  overflow: hidden;\n}\n\n/* ============================================================\n   Resize Handle\n   ============================================================ */\n.journy-message-widget-resize-handle {\n  position: absolute;\n  bottom: 0;\n  right: 0;\n  width: 20px;\n  height: 20px;\n  cursor: nwse-resize;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, var(--journy-border) 40%, var(--journy-border) 100%);\n  z-index: 10;\n  transition: background 0.2s;\n}\n\n.journy-message-widget-resize-handle:hover {\n  background: linear-gradient(135deg, transparent 0%, transparent 40%, var(--journy-border-strong) 40%, var(--journy-border-strong) 100%);\n}\n\n.journy-message-widget-resize-handle svg {\n  width: 12px;\n  height: 12px;\n  opacity: 0.6;\n}\n\n.journy-message-widget-resize-handle:hover svg {\n  opacity: 1;\n}\n\n/* ============================================================\n   Messages\n   ============================================================ */\n.journy-message-widget-message {\n  padding: 0;\n  position: relative;\n  transition: border-color 0.6s ease;\n}\n\n/* In single mode, constrain message content to fill available space with overflow hidden */\n.journy-message-widget-content--single .journy-message-widget-message {\n  overflow: hidden;\n}\n\n.journy-message-widget-message-close {\n  position: absolute;\n  top: 4px;\n  right: 4px;\n  width: 24px;\n  height: 24px;\n  padding: 0;\n  border: none;\n  background: transparent;\n  color: var(--journy-text-muted);\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  transition: background-color 0.2s, color 0.2s;\n  z-index: 1;\n}\n\n.journy-message-widget-message-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-widget-message:has(.journy-message-widget-message-close) .journy-message-content {\n  padding-right: 28px;\n}\n\n.journy-message-widget-nav {\n  background: none;\n  border: none;\n  font-size: 16px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 2px 6px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 24px;\n  height: 24px;\n}\n\n.journy-message-widget-nav:hover:not(:disabled) {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-widget-nav:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n\n.journy-message-widget-message-separated {\n  margin-bottom: 24px;\n  padding-bottom: 24px;\n  border-bottom: 1px solid var(--journy-border);\n}\n\n.journy-message-widget-message-count {\n  font-size: 12px;\n  color: var(--journy-on-header-muted);\n  font-weight: 400;\n  margin-left: 8px;\n  white-space: nowrap;\n  flex-shrink: 0;\n}\n\n.journy-message-widget-position {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  padding: 4px 12px;\n  font-size: 11px;\n  color: var(--journy-text-subtle);\n  font-weight: 500;\n  flex-shrink: 0;\n  border-top: 1px solid var(--journy-border);\n}\n\n.journy-message-widget-position-text {\n  min-width: 32px;\n  text-align: center;\n}\n\n.journy-message-widget-message.journy-message-info {\n  border-left: 4px solid var(--journy-info);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-success {\n  border-left: 4px solid var(--journy-success);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-warning {\n  border-left: 4px solid var(--journy-warning);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-error {\n  border-left: 4px solid var(--journy-error);\n  padding-left: 12px;\n}\n\n.journy-message-widget-message.journy-message-viewed {\n  border-left: 4px solid var(--journy-viewed);\n  padding-left: 12px;\n}\n\n/* ============================================================\n   Message Modal (80vw × 60vh)\n   ============================================================ */\n.journy-message-modal-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: var(--journy-overlay-bg);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10002;\n  padding: 20px;\n}\n\n.journy-message-modal {\n  width: 80vw;\n  max-width: 80vw;\n  height: 60vh;\n  max-height: 60vh;\n  background: var(--journy-surface);\n  border-radius: 12px;\n  box-shadow: var(--journy-shadow-md);\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  position: relative;\n}\n\n.journy-message-modal-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 16px 24px;\n  background: var(--journy-surface-alt);\n  border-bottom: 1px solid var(--journy-border);\n  flex-shrink: 0;\n}\n\n.journy-message-modal-title {\n  font-size: 18px;\n  font-weight: 600;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-modal-close {\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-modal-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-modal .journy-message-widget-message {\n  padding: 24px;\n  overflow-y: auto;\n  flex: 1;\n  min-height: 0;\n}\n\n/* ============================================================\n   Timestamp\n   ============================================================ */\n/* Overlay at the bottom of each message card (single mode only) */\n.journy-message-widget-content--single .journy-message-timestamp {\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n  padding: 32px 12px 8px 12px;\n  background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,1) 60%);\n  font-size: 12px;\n  color: var(--journy-text-muted);\n  line-height: 1.4;\n  pointer-events: none;\n  z-index: 2;\n}\n\n/* Flows naturally in list mode */\n.journy-message-widget-content:not(.journy-message-widget-content--single) .journy-message-timestamp {\n  font-size: 12px;\n  color: var(--journy-text-muted);\n  line-height: 1.4;\n  margin-top: 6px;\n}\n\n.journy-message-content-clickable {\n  cursor: pointer;\n}\n\n.journy-message-content-clickable:hover {\n  opacity: 0.95;\n}\n\n/* ============================================================\n   Legacy Modal Overlay (kept for backward compatibility)\n   ============================================================ */\n.journy-message-overlay {\n  position: fixed;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  background-color: var(--journy-overlay-bg);\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  z-index: 10000;\n  opacity: 0;\n  transition: opacity 0.3s ease-in-out;\n  pointer-events: none;\n}\n\n.journy-message-overlay.journy-message-visible {\n  opacity: 1;\n  pointer-events: all;\n}\n\n.journy-message-popup {\n  background: var(--journy-surface);\n  border-radius: 8px;\n  padding: 24px;\n  max-width: 500px;\n  width: 90%;\n  max-height: 80vh;\n  display: flex;\n  flex-direction: column;\n  box-shadow: var(--journy-shadow-sm);\n  position: relative;\n  transform: scale(0.9);\n  transition: transform 0.3s ease-in-out, border-color 0.6s ease;\n}\n\n.journy-message-popup .journy-message-content {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow-y: auto;\n}\n\n.journy-message-overlay.journy-message-visible .journy-message-popup {\n  transform: scale(1);\n}\n\n.journy-message-popup.journy-message-info    { border-top: 4px solid var(--journy-info); }\n.journy-message-popup.journy-message-success { border-top: 4px solid var(--journy-success); }\n.journy-message-popup.journy-message-warning { border-top: 4px solid var(--journy-warning); }\n.journy-message-popup.journy-message-error   { border-top: 4px solid var(--journy-error); }\n.journy-message-popup.journy-message-viewed  { border-top: 4px solid var(--journy-viewed); }\n\n.journy-message-close {\n  position: absolute;\n  top: 12px;\n  right: 12px;\n  background: none;\n  border: none;\n  font-size: 24px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n}\n\n.journy-message-close:hover {\n  background-color: var(--journy-surface-hover);\n  color: var(--journy-text-secondary);\n}\n\n/* ============================================================\n   Message Content\n   ============================================================ */\n.journy-message-title {\n  font-size: 20px;\n  font-weight: 600;\n  margin-bottom: 12px;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-content {\n  font-size: 16px;\n  line-height: 1.6;\n  color: var(--journy-text-secondary);\n  margin-bottom: 16px;\n}\n\n.journy-message-content a {\n  color: var(--journy-blue);\n  text-decoration: underline;\n  transition: color 0.2s;\n}\n\n.journy-message-content a:hover {\n  color: var(--journy-blue-hover);\n}\n\n.journy-message-content p {\n  margin: 0 0 12px 0;\n}\n\n.journy-message-content p:last-child {\n  margin-bottom: 0;\n}\n\n.journy-message-content ul,\n.journy-message-content ol {\n  margin: 12px 0;\n  padding-left: 24px;\n}\n\n.journy-message-content li {\n  margin-bottom: 8px;\n}\n\n/* Headings */\n.journy-message-content h1,\n.journy-message-content h2,\n.journy-message-content h3,\n.journy-message-content h4,\n.journy-message-content h5,\n.journy-message-content h6 {\n  margin: 16px 0 12px 0;\n  font-weight: 600;\n  line-height: 1.3;\n  color: var(--journy-text-primary);\n}\n\n.journy-message-content h1 { font-size: 24px; }\n.journy-message-content h2 { font-size: 20px; }\n.journy-message-content h3 { font-size: 18px; }\n.journy-message-content h4 { font-size: 16px; }\n.journy-message-content h5,\n.journy-message-content h6 { font-size: 14px; }\n\n/* Code */\n.journy-message-content code {\n  background-color: var(--journy-surface-hover);\n  color: var(--journy-error);\n  padding: 2px 6px;\n  border-radius: 4px;\n  font-size: 0.9em;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n}\n\n.journy-message-content pre {\n  background-color: var(--journy-navy);\n  color: var(--journy-surface-alt);\n  padding: 16px;\n  border-radius: 8px;\n  overflow-x: auto;\n  margin: 12px 0;\n  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;\n  font-size: 14px;\n  line-height: 1.5;\n}\n\n.journy-message-content pre code {\n  background-color: transparent;\n  color: inherit;\n  padding: 0;\n  border-radius: 0;\n  font-size: inherit;\n}\n\n/* Text formatting */\n.journy-message-content u              { text-decoration: underline; }\n.journy-message-content s,\n.journy-message-content strike,\n.journy-message-content del            { text-decoration: line-through; }\n.journy-message-content strong         { font-weight: 600; }\n.journy-message-content em             { font-style: italic; }\n\n/* Blockquotes */\n.journy-message-content blockquote {\n  border-left: 4px solid var(--journy-border);\n  padding-left: 16px;\n  margin: 12px 0;\n  color: var(--journy-text-muted);\n  font-style: italic;\n}\n\n/* Tables */\n.journy-message-content table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 12px 0;\n}\n\n.journy-message-content th,\n.journy-message-content td {\n  border: 1px solid var(--journy-border);\n  padding: 8px 12px;\n  text-align: left;\n}\n\n.journy-message-content th {\n  background-color: var(--journy-surface-alt);\n  font-weight: 600;\n}\n\n/* Horizontal rule */\n.journy-message-content hr {\n  border: none;\n  border-top: 1px solid var(--journy-border);\n  margin: 16px 0;\n}\n\n/* ============================================================\n   Actions\n   ============================================================ */\n.journy-message-actions {\n  display: flex;\n  gap: 12px;\n  margin-top: 20px;\n  flex-wrap: wrap;\n}\n\n.journy-message-action {\n  padding: 10px 20px;\n  border-radius: 6px;\n  font-size: 14px;\n  font-weight: 500;\n  cursor: pointer;\n  border: none;\n  transition: all 0.2s;\n}\n\n.journy-message-action-primary {\n  background-color: var(--journy-blue);\n  color: var(--journy-on-header);\n}\n\n.journy-message-action-primary:hover {\n  background-color: var(--journy-blue-hover);\n}\n\n.journy-message-action-secondary {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-message-action-secondary:hover {\n  background-color: var(--journy-border-strong);\n}\n\n.journy-message-action-link {\n  background: none;\n  color: var(--journy-blue);\n  text-decoration: underline;\n  padding: 10px 0;\n}\n\n.journy-message-action-link:hover {\n  color: var(--journy-blue-hover);\n}\n\n/* ============================================================\n   Settings Panel\n   ============================================================ */\n.journy-settings-panel {\n  position: absolute;\n  top: 0;\n  right: 0;\n  bottom: 0;\n  width: 100%;\n  background: var(--journy-surface);\n  z-index: 10;\n  display: flex;\n  flex-direction: column;\n  transform: translateX(100%);\n  transition: transform 0.3s ease;\n}\n\n.journy-settings-panel-open  { transform: translateX(0); }\n.journy-settings-panel-closed { transform: translateX(100%); }\n\n.journy-settings-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 16px;\n  background: var(--journy-surface-alt);\n  border-bottom: 1px solid var(--journy-border);\n  flex-shrink: 0;\n}\n\n.journy-settings-title {\n  font-size: 14px;\n  font-weight: 600;\n  color: var(--journy-text-primary);\n}\n\n.journy-settings-close {\n  background: none;\n  border: none;\n  font-size: 18px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-text-muted);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-settings-close:hover {\n  background-color: var(--journy-border);\n  color: var(--journy-text-secondary);\n}\n\n.journy-settings-body {\n  padding: 16px;\n  overflow-y: auto;\n  flex: 1;\n}\n\n.journy-settings-item {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  padding: 12px 0;\n  border-bottom: 1px solid var(--journy-surface-hover);\n}\n\n.journy-settings-item:last-child {\n  border-bottom: none;\n}\n\n.journy-settings-label {\n  font-size: 13px;\n  font-weight: 500;\n  color: var(--journy-text-secondary);\n}\n\n.journy-settings-select {\n  padding: 6px 10px;\n  border: 1px solid var(--journy-border-strong);\n  border-radius: 6px;\n  font-size: 13px;\n  color: var(--journy-text-secondary);\n  background: var(--journy-surface);\n  cursor: pointer;\n  outline: none;\n  transition: border-color 0.2s;\n}\n\n.journy-settings-select:focus {\n  border-color: var(--journy-blue);\n}\n\n.journy-settings-toggle {\n  position: relative;\n  width: 40px;\n  height: 22px;\n  border-radius: 11px;\n  border: none;\n  background: var(--journy-border-strong);\n  cursor: pointer;\n  padding: 0;\n  transition: background-color 0.2s;\n  flex-shrink: 0;\n}\n\n.journy-settings-toggle-on {\n  background: var(--journy-blue);\n}\n\n.journy-settings-toggle-knob {\n  position: absolute;\n  top: 2px;\n  left: 2px;\n  width: 18px;\n  height: 18px;\n  border-radius: 50%;\n  background: var(--journy-surface);\n  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);\n  transition: transform 0.2s;\n}\n\n.journy-settings-toggle-on .journy-settings-toggle-knob {\n  transform: translateX(18px);\n}\n\n.journy-settings-item-vertical {\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 6px;\n}\n\n.journy-settings-input {\n  width: 100%;\n  padding: 6px 10px;\n  border: 1px solid var(--journy-border-strong);\n  border-radius: 6px;\n  font-size: 13px;\n  color: var(--journy-text-secondary);\n  background: var(--journy-surface);\n  outline: none;\n  transition: border-color 0.2s;\n  box-sizing: border-box;\n}\n\n.journy-settings-input:focus {\n  border-color: var(--journy-blue);\n}\n\n.journy-settings-input::placeholder {\n  color: var(--journy-text-subtle);\n}\n\n.journy-settings-value {\n  font-size: 13px;\n  color: var(--journy-text-muted);\n  font-weight: 400;\n  max-width: 60%;\n  text-align: right;\n  word-break: break-all;\n}\n\n.journy-message-widget-empty {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  color: var(--journy-text-subtle);\n  font-size: 14px;\n  flex: 1;\n  min-height: 80px;\n}\n\n.journy-settings-advanced-btn {\n  background: none;\n  border: none;\n  font-size: 13px;\n  font-weight: 500;\n  color: var(--journy-text-muted);\n  cursor: pointer;\n  padding: 0;\n  transition: color 0.2s;\n}\n\n.journy-settings-advanced-btn:hover {\n  color: var(--journy-text-secondary);\n}\n\n.journy-settings-footer {\n  display: flex;\n  justify-content: flex-end;\n  gap: 8px;\n  padding: 12px 16px;\n  background: var(--journy-surface-alt);\n  border-top: 1px solid var(--journy-border);\n  flex-shrink: 0;\n}\n\n.journy-settings-btn {\n  padding: 6px 16px;\n  border-radius: 6px;\n  font-size: 13px;\n  font-weight: 500;\n  cursor: pointer;\n  border: 1px solid transparent;\n  transition: background-color 0.2s, border-color 0.2s, color 0.2s, opacity 0.2s;\n}\n\n.journy-settings-btn-primary {\n  background: var(--journy-blue);\n  color: var(--journy-on-header);\n}\n\n.journy-settings-btn-primary:hover:not(:disabled) {\n  background: var(--journy-blue-hover);\n}\n\n.journy-settings-btn-primary:disabled {\n  opacity: 0.5;\n  cursor: not-allowed;\n}\n\n.journy-settings-btn-secondary {\n  background: var(--journy-surface);\n  color: var(--journy-text-secondary);\n  border-color: var(--journy-border-strong);\n}\n\n.journy-settings-btn-secondary:hover {\n  background: var(--journy-surface-hover);\n}\n\n/* ============================================================\n   Banner Mode\n   ============================================================ */\n.journy-message-banner {\n  position: fixed;\n  z-index: 10000;\n  display: flex;\n  align-items: flex-start;\n  gap: 12px;\n  padding: 36px 36px 16px 16px;\n  background: var(--journy-navy);\n  color: var(--journy-on-header);\n  border-radius: 10px;\n  box-shadow: var(--journy-shadow-md);\n  box-sizing: border-box;\n  /* `width: max-content` makes the banner ask for its unwrapped natural width\n     on first layout (Chrome otherwise under-sizes shrink-to-fit flex containers\n     positioned with `left: 50%; transform: translateX(-50%)` until a re-render).\n     `max-width: 80vw` then clamps long-form content; short messages still\n     shrink to fit because max-content is below the cap. */\n  width: max-content;\n  max-width: 80vw;\n  max-height: 50vh;\n  font-size: 14px;\n  line-height: 1.4;\n  opacity: 1;\n  transition: opacity 200ms ease-out;\n  user-select: none;\n  cursor: grab;\n}\n\n.journy-message-banner:active {\n  cursor: grabbing;\n}\n\n.journy-message-banner.journy-message-banner-exiting {\n  opacity: 0;\n  pointer-events: none;\n}\n\n.journy-message-banner.journy-message-banner-pinned {\n  box-shadow: 0 0 0 2px var(--journy-blue), var(--journy-shadow-md);\n}\n\n.journy-message-banner-pin {\n  position: absolute;\n  top: 8px;\n  left: 8px;\n  font-size: 14px;\n  line-height: 1;\n  pointer-events: none;\n  opacity: 0.85;\n}\n\n.journy-message-banner .journy-message-content {\n  margin: 0;\n  font-size: 14px;\n  color: var(--journy-on-header);\n  overflow-wrap: anywhere;\n  word-break: break-word;\n}\n\n.journy-message-banner .journy-message-content img {\n  display: block;\n  max-width: 100%;\n  height: auto;\n  object-fit: contain;\n  border-radius: 4px;\n  margin: 8px 0;\n}\n\n/* Headings, paragraphs, list items, etc. inside the message HTML default to\n   dark text via the popup-scoped rules — force them to the on-header palette\n   when rendered on the navy banner background so the content stays legible. */\n.journy-message-banner .journy-message-content,\n.journy-message-banner .journy-message-content h1,\n.journy-message-banner .journy-message-content h2,\n.journy-message-banner .journy-message-content h3,\n.journy-message-banner .journy-message-content h4,\n.journy-message-banner .journy-message-content h5,\n.journy-message-banner .journy-message-content h6,\n.journy-message-banner .journy-message-content p,\n.journy-message-banner .journy-message-content li,\n.journy-message-banner .journy-message-content strong,\n.journy-message-banner .journy-message-content em,\n.journy-message-banner .journy-message-content u,\n.journy-message-banner .journy-message-content s {\n  color: var(--journy-on-header);\n}\n\n.journy-message-banner .journy-message-content blockquote {\n  color: var(--journy-on-header-muted);\n  border-left-color: var(--journy-on-header-btn-hover);\n}\n\n.journy-message-banner .journy-message-content code {\n  color: var(--journy-on-header);\n  background-color: var(--journy-on-header-btn-hover);\n}\n\n.journy-message-banner .journy-message-content pre {\n  background-color: rgba(0, 0, 0, 0.25);\n  color: var(--journy-on-header);\n  max-width: 100%;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  word-break: break-word;\n  overflow-x: hidden;\n}\n\n.journy-message-banner .journy-message-content table {\n  display: block;\n  max-width: 100%;\n  overflow-x: hidden;\n}\n\n.journy-message-banner .journy-message-content a {\n  color: var(--journy-on-header);\n  text-decoration: underline;\n}\n\n.journy-message-banner .journy-message-content a:hover {\n  color: var(--journy-on-header-muted);\n}\n\n.journy-message-banner .journy-message-timestamp {\n  font-size: 11px;\n  color: var(--journy-on-header-muted);\n  margin-top: 2px;\n}\n\n.journy-message-banner-content {\n  flex: 1;\n  min-width: 0;\n  cursor: pointer;\n  overflow-y: auto;\n  overflow-x: hidden;\n  max-height: calc(50vh - 52px);\n  scrollbar-width: thin;\n  scrollbar-color: var(--journy-on-header-btn) transparent;\n}\n\n.journy-message-banner-content::-webkit-scrollbar {\n  width: 8px;\n  height: 8px;\n}\n\n.journy-message-banner-content::-webkit-scrollbar-track {\n  background: transparent;\n}\n\n.journy-message-banner-content::-webkit-scrollbar-thumb {\n  background-color: var(--journy-on-header-btn-hover);\n  border-radius: 4px;\n  border: 2px solid transparent;\n  background-clip: padding-box;\n}\n\n.journy-message-banner-content::-webkit-scrollbar-thumb:hover {\n  background-color: var(--journy-on-header-btn);\n}\n\n.journy-message-banner-close {\n  position: absolute;\n  top: 6px;\n  right: 6px;\n  flex-shrink: 0;\n  background: none;\n  border: none;\n  font-size: 20px;\n  line-height: 1;\n  cursor: pointer;\n  color: var(--journy-on-header-btn);\n  padding: 4px 8px;\n  border-radius: 4px;\n  transition: background-color 0.2s, color 0.2s;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 28px;\n  height: 28px;\n}\n\n.journy-message-banner-close:hover {\n  background-color: var(--journy-on-header-btn-hover);\n  color: var(--journy-on-header);\n}\n\n/* Position modifiers — animate opacity only so the static transform\n   (centering) isn't fought by the keyframe. */\n.journy-message-banner-top-left,\n.journy-message-banner-top-center,\n.journy-message-banner-top-right,\n.journy-message-banner-bottom-left,\n.journy-message-banner-bottom-center,\n.journy-message-banner-bottom-right {\n  animation: journy-banner-fade-in 0.25s ease-out;\n}\n\n.journy-message-banner-top-left    { top: 16px;    left: 16px; }\n.journy-message-banner-top-right   { top: 16px;    right: 16px; }\n.journy-message-banner-bottom-left { bottom: 16px; left: 16px; }\n.journy-message-banner-bottom-right{ bottom: 16px; right: 16px; }\n\n.journy-message-banner-top-center {\n  top: 16px;\n  left: 50%;\n  transform: translateX(-50%);\n}\n\n.journy-message-banner-bottom-center {\n  bottom: 16px;\n  left: 50%;\n  transform: translateX(-50%);\n}\n\n@keyframes journy-banner-fade-in {\n  from { opacity: 0; }\n  to   { opacity: 1; }\n}\n\n/* Debug-only settings host — keeps the SettingsPanel reachable in banner mode\n   where the widget shell (and its gear button) is not rendered. The explicit\n   height is required because the panel inside uses `position: absolute; inset: 0`\n   and would otherwise collapse to zero, hiding the panel content under\n   `overflow: hidden`. The host itself stays click-through so it doesn't\n   block the page when the panel is closed. */\n.journy-banner-settings-host {\n  position: fixed;\n  bottom: 16px;\n  right: 16px;\n  width: 320px;\n  height: min(560px, calc(100vh - 32px));\n  z-index: 10001;\n  background: transparent;\n  pointer-events: none;\n}\n\n.journy-banner-settings-host .journy-settings-panel {\n  pointer-events: auto;\n  position: absolute;\n  inset: 0;\n  background: var(--journy-surface);\n  border-radius: 12px;\n  box-shadow: var(--journy-shadow-md);\n  overflow: hidden;\n}\n\n.journy-banner-settings-trigger {\n  pointer-events: auto;\n  position: absolute;\n  bottom: 0;\n  right: 0;\n  width: 40px;\n  height: 40px;\n  border: none;\n  border-radius: 50%;\n  background: var(--journy-navy);\n  color: var(--journy-on-header);\n  font-size: 20px;\n  line-height: 1;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  box-shadow: var(--journy-shadow-sm);\n  transition: background-color 0.2s, transform 0.2s;\n}\n\n.journy-banner-settings-trigger:hover {\n  background: var(--journy-blue);\n  transform: scale(1.05);\n}\n\n/* ============================================================\n   Responsive\n   ============================================================ */\n@media (max-width: 640px) {\n  .journy-message-widget {\n    min-width: calc(100vw - 32px);\n    max-width: calc(100vw - 32px);\n    left: 16px !important;\n    right: 16px !important;\n  }\n\n  .journy-message-popup {\n    width: 95%;\n    padding: 20px;\n  }\n\n  .journy-message-title {\n    font-size: 18px;\n  }\n\n  .journy-message-content {\n    font-size: 14px;\n  }\n\n  .journy-message-actions {\n    flex-direction: column;\n  }\n\n  .journy-message-action {\n    width: 100%;\n  }\n}\n";
 
 /**
  * Builds a generic track batch item for any SDK event type.
@@ -538,7 +566,7 @@ function createDebugMessages(entityType) {
             status: 'sent',
             scope: entityType,
             message: '<h3>Phasellus fermentum malesuada phasellus netus dictum aenean placerat egestas amet. Ornare taciti semper dolor tristique morbi. Sem leo tincidunt aliquet semper eu lectus scelerisque quis. Sagittis vivamus mollis nisi mollis enim fermentum laoreet.</h3><p>Hi ,</p><p>Curabitur semper venenatis lectus viverra ex dictumst nulla maximus. Primis elementum conubia feugiat venenatis dolor augue ac blandit nullam ac phasellus turpis feugiat mollis. Duis lectus porta mattis imperdiet vivamus Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Proin tortor purus platea sit accumsan nec elit eras fuctus primis ipsum gravida class conguet eu id nisi litora libero. Neque vulputate consequat ac amet augue blandit maximus aliquet congue. Pharetra vestibulum posuere ornare faucibus fusce dictumst orci aenean eu facilisis ut volutpat commodo senectus purus himenaeos fames primis convallis nisi.</p>',
-            received: false,
+            received: true,
             expired: false,
             createdAt: fiveMinAgo,
         },
@@ -548,7 +576,7 @@ function createDebugMessages(entityType) {
             status: 'sent',
             scope: entityType,
             message: '<h3>Phasellus fermentum malesuada phasellus netus dictum aenean placerat egestas amet. Ornare taciti semper dolor tristique morbi. Sem leo tincidunt aliquet semper eu lectus</h3><p>Hi ,</p><p>Curabitur semper venenatis lectus viverra ex dictumst nulla maximus. Primis elementum conubia feugiat venenatis dolor augue ac blandit nullam ac phasellus turpis feugiat mollis.</p>',
-            received: false,
+            received: true,
             expired: false,
             createdAt: fiveMinAgo,
         },
@@ -561,6 +589,75 @@ function createDebugMessages(entityType) {
             received: true,
             expired: false,
             createdAt: fiveMinAgo,
+        },
+        {
+            id: 'debug-msg-banner-1-short',
+            appId: 'debug',
+            status: 'sent',
+            scope: entityType,
+            message: '<p><strong>Quick note:</strong> short banner — smallest visual baseline. Drag me around to reposition.</p>',
+            isBanner: true,
+            received: false,
+            expired: false,
+            createdAt: fiveMinAgo,
+        },
+        {
+            id: 'debug-msg-banner-2-link-image',
+            appId: 'debug',
+            status: 'sent',
+            scope: entityType,
+            message: '<p><strong>Heads up!</strong> Banner with a <a href="https://example.com">link</a> and an inline image — clicking the link should not toggle pin.</p>' +
+                '<p><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSI4MCI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjNTI4YWZhIi8+PHRleHQgeD0iNDAiIHk9IjQ1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSJ3aGl0ZSIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTQiPmJhbm5lcjwvdGV4dD48L3N2Zz4=" alt="banner illustration" /></p>',
+            isBanner: true,
+            received: false,
+            expired: false,
+            createdAt: now,
+        },
+        {
+            id: 'debug-msg-banner-3-long',
+            appId: 'debug',
+            status: 'sent',
+            scope: entityType,
+            message: `
+        <h4>Long banner — pin me, then scroll</h4>
+        <p>Click anywhere in the body to pin (auto-dismiss timer pauses). Scroll the content to verify the custom scrollbar styling and that the pin/close chrome stays anchored.</p>
+        <ul>
+          <li>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</li>
+          <li>Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</li>
+          <li>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.</li>
+          <li>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum.</li>
+        </ul>
+        <p>Curabitur semper venenatis lectus viverra ex dictumst nulla maximus. Primis elementum conubia feugiat venenatis dolor augue ac blandit nullam ac phasellus turpis feugiat mollis.</p>
+        <p>Phasellus fermentum malesuada phasellus netus dictum aenean placerat egestas amet. Ornare taciti semper dolor tristique morbi. Sem leo tincidunt aliquet semper eu lectus scelerisque quis.</p>
+        <p>Read more at <a href="https://example.com/changelog">the changelog</a>.</p>
+      `,
+            isBanner: true,
+            received: false,
+            expired: false,
+            createdAt: now,
+        },
+        {
+            id: 'debug-msg-banner-4-wide',
+            appId: 'debug',
+            status: 'sent',
+            scope: entityType,
+            message: '<p><strong>Width test:</strong> long unbreakable token below — banner should shrink-to-fit and never trigger horizontal scroll, even on narrow viewports.</p>' +
+                '<p>https://example.com/very/long/path/abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz</p>',
+            isBanner: true,
+            received: false,
+            expired: false,
+            createdAt: now,
+        },
+        {
+            id: 'debug-msg-banner-5-queue',
+            appId: 'debug',
+            status: 'sent',
+            scope: entityType,
+            message: '<p>Queued banner — surfaces after the previous one is dismissed. Verifies banner ordering by <code>createdAt</code>.</p>',
+            isBanner: true,
+            received: false,
+            expired: false,
+            createdAt: now,
         },
         {
             id: 'debug-msg-5-long',
@@ -588,7 +685,7 @@ function createDebugMessages(entityType) {
         <p>Nulla porttitor accumsan tincidunt. Quisque velit nisi, pretium ut lacinia in, elementum id enim. Vestibulum ac diam sit amet quam vehicula elementum sed sit amet dui. Praesent sapien massa, convallis a pellentesque nec, egestas non nisi.</p>
         <p>Read more at <a href="https://example.com/changelog">our changelog</a>. Try scrolling — the × button at the top right should stay reachable the entire time.</p>
       `,
-            received: false,
+            received: true,
             expired: false,
             createdAt: now,
         },
@@ -1991,7 +2088,20 @@ function createDOMPurify() {
 }
 var purify = createDOMPurify();
 
+let anchorHookInstalled = false;
+function ensureAnchorHook() {
+    if (anchorHookInstalled)
+        return;
+    purify.addHook('afterSanitizeAttributes', (node) => {
+        if (node.tagName === 'A') {
+            node.setAttribute('target', '_blank');
+            node.setAttribute('rel', 'noopener noreferrer');
+        }
+    });
+    anchorHookInstalled = true;
+}
 function sanitizeHtml(html) {
+    ensureAnchorHook();
     return purify.sanitize(html, {
         ALLOWED_TAGS: [
             // Text formatting
@@ -2008,13 +2118,19 @@ function sanitizeHtml(html) {
             'blockquote', 'q',
             // Tables
             'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+            // Images
+            'img',
             // Other
             'hr', 'sub', 'sup', 'small', 'mark', 'abbr', 'cite', 'time'
         ],
-        ALLOWED_ATTR: ['href', 'target', 'rel', 'title', 'class', 'id', 'style'],
+        ALLOWED_ATTR: [
+            'href', 'target', 'rel', 'title', 'class', 'id', 'style',
+            'src', 'alt', 'width', 'height',
+        ],
         ALLOW_DATA_ATTR: false,
         // Allow style attribute but sanitize it
         ALLOW_UNKNOWN_PROTOCOLS: false,
+        ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,)/i,
     });
 }
 
@@ -2076,7 +2192,6 @@ const POLLING_OPTIONS = [
 const DISPLAY_MODE_OPTIONS = [
     { label: 'Widget', value: 'widget' },
     { label: 'List', value: 'list' },
-    { label: 'Banner', value: 'banner' },
 ];
 const BANNER_POSITION_OPTIONS = [
     { label: 'Top left', value: 'top-left' },
@@ -2141,13 +2256,12 @@ const SettingsPanel = ({ isOpen, onClose, settings, onSettingsChange, configInfo
             React.createElement("div", { className: "journy-settings-item" },
                 React.createElement("label", { className: "journy-settings-label" }, "Display mode"),
                 React.createElement("select", { className: "journy-settings-select", value: draft.displayMode, onChange: (e) => update({ displayMode: e.target.value }) }, DISPLAY_MODE_OPTIONS.map((opt) => (React.createElement("option", { key: opt.value, value: opt.value }, opt.label))))),
-            draft.displayMode === 'banner' && (React.createElement(React.Fragment, null,
-                React.createElement("div", { className: "journy-settings-item" },
-                    React.createElement("label", { className: "journy-settings-label" }, "Banner position"),
-                    React.createElement("select", { className: "journy-settings-select", value: draft.bannerPosition, onChange: (e) => update({ bannerPosition: e.target.value }) }, BANNER_POSITION_OPTIONS.map((opt) => (React.createElement("option", { key: opt.value, value: opt.value }, opt.label))))),
-                React.createElement("div", { className: "journy-settings-item" },
-                    React.createElement("label", { className: "journy-settings-label" }, "Banner auto-dismiss"),
-                    React.createElement("select", { className: "journy-settings-select", value: draft.bannerAutoDismissMs, onChange: (e) => update({ bannerAutoDismissMs: Number(e.target.value) }) }, BANNER_AUTO_DISMISS_OPTIONS.map((opt) => (React.createElement("option", { key: opt.value, value: opt.value }, opt.label))))))),
+            React.createElement("div", { className: "journy-settings-item" },
+                React.createElement("label", { className: "journy-settings-label" }, "Banner position"),
+                React.createElement("select", { className: "journy-settings-select", value: draft.bannerPosition, onChange: (e) => update({ bannerPosition: e.target.value }) }, BANNER_POSITION_OPTIONS.map((opt) => (React.createElement("option", { key: opt.value, value: opt.value }, opt.label))))),
+            React.createElement("div", { className: "journy-settings-item" },
+                React.createElement("label", { className: "journy-settings-label" }, "Banner auto-dismiss"),
+                React.createElement("select", { className: "journy-settings-select", value: draft.bannerAutoDismissMs, onChange: (e) => update({ bannerAutoDismissMs: Number(e.target.value) }) }, BANNER_AUTO_DISMISS_OPTIONS.map((opt) => (React.createElement("option", { key: opt.value, value: opt.value }, opt.label))))),
             React.createElement("div", { className: "journy-settings-item" },
                 React.createElement("label", { className: "journy-settings-label" }, "Polling interval"),
                 React.createElement("select", { className: "journy-settings-select", value: draft.pollingInterval, onChange: (e) => update({ pollingInterval: Number(e.target.value) }) }, POLLING_OPTIONS.map((opt) => (React.createElement("option", { key: opt.value, value: opt.value }, opt.label))))),
@@ -2620,55 +2734,43 @@ const WidgetSingleView = ({ displayMessage, allMessagesToShow, currentMessageInd
                 onNextMessage?.();
             }, title: "Next message", "aria-label": "Next", disabled: !canGoNext }, "\u203A")))));
 
-const BANNER_SIZE_STORAGE_KEY = 'banner_size';
-/** Which corner of the banner the resize handle occupies, per anchor position. */
-const RESIZE_HANDLE_CORNER = {
-    'top-left': 'bottom-right',
-    'top-center': 'bottom-right',
-    'top-right': 'bottom-left',
-    'bottom-left': 'top-right',
-    'bottom-center': 'top-right',
-    'bottom-right': 'top-left',
-};
-const isCenteredPosition = (position) => position === 'top-center' || position === 'bottom-center';
-const getMaxDimensions = () => ({
-    maxWidth: Math.max(BANNER_MIN_WIDTH, (window.innerWidth * BANNER_MAX_WIDTH_VW) / 100),
-    maxHeight: Math.max(BANNER_MIN_HEIGHT, (window.innerHeight * BANNER_MAX_HEIGHT_VH) / 100),
-});
-const clampSize = (size) => {
-    const { maxWidth, maxHeight } = getMaxDimensions();
-    return {
-        width: Math.max(BANNER_MIN_WIDTH, Math.min(maxWidth, size.width)),
-        height: Math.max(BANNER_MIN_HEIGHT, Math.min(maxHeight, size.height)),
-    };
-};
-const BannerView = ({ message, position, autoDismissMs, onDismissMessage, onMessageReceived, onContentClick, }) => {
+const PIN_PATH = 'M5 2 H11 V4 H10 V8 L12 10 V11 H9 L8.5 15 L8 16 L7.5 15 L7 11 H4 V10 L6 8 V4 H5 Z';
+const PinIcon = ({ pinned, size = 14 }) => (React.createElement("svg", { width: size, height: size, viewBox: "0 0 16 16", fill: pinned ? 'currentColor' : 'none', stroke: "currentColor", strokeWidth: pinned ? 0 : 1.25, strokeLinejoin: "round", xmlns: "http://www.w3.org/2000/svg", "aria-hidden": "true", focusable: "false" },
+    React.createElement("path", { d: PIN_PATH })));
+
+const DRAG_CLICK_THRESHOLD_PX = 4;
+const BannerView = ({ message, position, autoDismissMs, onDismissMessage, onMessageReceived, onLinkClick, }) => {
     const dismissDelayMs = autoDismissMs ?? BANNER_AUTO_DISMISS_MS;
     const isAutoDismissEnabled = dismissDelayMs > 0;
     const dismissTimerRef = useRef(null);
     const fadeOutTimerRef = useRef(null);
     const isHoveredRef = useRef(false);
+    const isPinnedRef = useRef(false);
     const receivedFiredForIdRef = useRef(null);
     const isDismissingRef = useRef(false);
-    const [size, setSize] = useState(() => {
-        const saved = getItem(BANNER_SIZE_STORAGE_KEY);
-        return saved ? clampSize(saved) : { width: BANNER_DEFAULT_WIDTH, height: BANNER_DEFAULT_HEIGHT };
-    });
-    const [isResizing, setIsResizing] = useState(false);
+    const bannerRef = useRef(null);
+    const dragStateRef = useRef(null);
+    const dragListenersRef = useRef(null);
+    const [isPinned, setIsPinned] = useState(false);
     const [isExiting, setIsExiting] = useState(false);
-    const clearDismissTimer = () => {
+    const [dragPos, setDragPos] = useState(null);
+    // Mirror the pinned state into a ref so timer logic always reads the latest value
+    useEffect(() => {
+        isPinnedRef.current = isPinned;
+    }, [isPinned]);
+    const clearDismissTimer = useCallback(() => {
         if (dismissTimerRef.current) {
             clearTimeout(dismissTimerRef.current);
             dismissTimerRef.current = null;
         }
-    };
+    }, []);
     const clearFadeOutTimer = () => {
         if (fadeOutTimerRef.current) {
             clearTimeout(fadeOutTimerRef.current);
             fadeOutTimerRef.current = null;
         }
     };
-    const triggerDismiss = (messageId) => {
+    const triggerDismiss = useCallback((messageId) => {
         if (isDismissingRef.current)
             return;
         if (!onDismissMessage)
@@ -2679,24 +2781,27 @@ const BannerView = ({ message, position, autoDismissMs, onDismissMessage, onMess
         fadeOutTimerRef.current = setTimeout(() => {
             onDismissMessage(messageId);
         }, BANNER_FADE_OUT_MS);
-    };
-    const startDismissTimer = () => {
+    }, [clearDismissTimer, onDismissMessage]);
+    const startDismissTimer = useCallback(() => {
         clearDismissTimer();
         if (!isAutoDismissEnabled)
             return;
         if (isHoveredRef.current)
+            return;
+        if (isPinnedRef.current)
             return;
         if (isDismissingRef.current)
             return;
         dismissTimerRef.current = setTimeout(() => {
             triggerDismiss(message.id);
         }, dismissDelayMs);
-    };
-    // Reset dismissal state and fade-in fresh when a new message takes over
-    // the banner slot (the parent advances the queue after onDismissMessage).
+    }, [clearDismissTimer, dismissDelayMs, isAutoDismissEnabled, message.id, triggerDismiss]);
+    // Reset state when a different banner takes over the slot.
     useEffect(() => {
         isDismissingRef.current = false;
         setIsExiting(false);
+        setIsPinned(false);
+        setDragPos(null);
     }, [message.id]);
     useEffect(() => {
         if (receivedFiredForIdRef.current === message.id)
@@ -2712,8 +2817,14 @@ const BannerView = ({ message, position, autoDismissMs, onDismissMessage, onMess
             clearDismissTimer();
             clearFadeOutTimer();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [message.id, onDismissMessage, dismissDelayMs, isAutoDismissEnabled]);
+    }, [message.id, dismissDelayMs, isAutoDismissEnabled, startDismissTimer, clearDismissTimer]);
+    // Restart the timer when pin state changes.
+    useEffect(() => {
+        if (!isPinned)
+            startDismissTimer();
+        else
+            clearDismissTimer();
+    }, [isPinned, startDismissTimer, clearDismissTimer]);
     const handleMouseEnter = () => {
         isHoveredRef.current = true;
         clearDismissTimer();
@@ -2722,51 +2833,112 @@ const BannerView = ({ message, position, autoDismissMs, onDismissMessage, onMess
         isHoveredRef.current = false;
         startDismissTimer();
     };
-    const handleResizeStart = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsResizing(true);
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const startWidth = size.width;
-        const startHeight = size.height;
-        const corner = RESIZE_HANDLE_CORNER[position];
-        const xGrowsRight = corner.endsWith('right');
-        const yGrowsDown = corner.startsWith('bottom');
-        const widthGrowsSymmetric = isCenteredPosition(position);
-        let latestSize = { ...size };
+    const detachDragListeners = useCallback(() => {
+        const listeners = dragListenersRef.current;
+        if (!listeners)
+            return;
+        document.removeEventListener('mousemove', listeners.onMove);
+        document.removeEventListener('mouseup', listeners.onUp);
+        dragListenersRef.current = null;
+    }, []);
+    // Detach any in-flight drag listeners when the banner unmounts or swaps.
+    useEffect(() => {
+        return () => {
+            detachDragListeners();
+            dragStateRef.current = null;
+        };
+    }, [message.id, detachDragListeners]);
+    const handleContentClick = (e) => {
+        // If the click landed on a link, let it through and don't toggle pin.
+        const target = e.target;
+        const anchor = target.closest('a');
+        if (anchor) {
+            e.stopPropagation();
+            const href = anchor.getAttribute('href');
+            if (href && onLinkClick)
+                onLinkClick(href);
+            return;
+        }
+        // If the user dragged the banner, suppress the click.
+        if (dragStateRef.current?.moved)
+            return;
+        setIsPinned((p) => !p);
+    };
+    const handleDragMouseDown = (e) => {
+        const target = e.target;
+        // Don't initiate drag from the close button, content links, or images.
+        if (target.closest('.journy-message-banner-close'))
+            return;
+        if (target.closest('a'))
+            return;
+        if (target.tagName === 'IMG')
+            return;
+        const rect = bannerRef.current?.getBoundingClientRect();
+        if (!rect)
+            return;
+        dragStateRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            originLeft: rect.left,
+            originTop: rect.top,
+            moved: false,
+        };
+        // Switch to absolute positioning the moment drag begins.
+        setDragPos({ left: rect.left, top: rect.top });
         const onMove = (ev) => {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-            const widthSign = xGrowsRight ? 1 : -1;
-            const heightSign = yGrowsDown ? 1 : -1;
-            const widthDelta = (widthGrowsSymmetric ? 2 : 1) * widthSign * dx;
-            const heightDelta = heightSign * dy;
-            latestSize = clampSize({
-                width: startWidth + widthDelta,
-                height: startHeight + heightDelta,
+            const st = dragStateRef.current;
+            if (!st)
+                return;
+            const dx = ev.clientX - st.startX;
+            const dy = ev.clientY - st.startY;
+            if (!st.moved &&
+                (Math.abs(dx) > DRAG_CLICK_THRESHOLD_PX || Math.abs(dy) > DRAG_CLICK_THRESHOLD_PX)) {
+                st.moved = true;
+            }
+            setDragPos({
+                left: st.originLeft + dx,
+                top: st.originTop + dy,
             });
-            setSize(latestSize);
         };
         const onUp = () => {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            setIsResizing(false);
-            setItem(BANNER_SIZE_STORAGE_KEY, latestSize);
+            detachDragListeners();
+            // Defer clearing `moved` to next tick so the trailing click event still
+            // sees it (and skips pin-toggle).
+            setTimeout(() => {
+                dragStateRef.current = null;
+            }, 0);
         };
+        dragListenersRef.current = { onMove, onUp };
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
     };
-    const resizeCornerClass = `journy-message-banner-resize-handle--${RESIZE_HANDLE_CORNER[position]}`;
-    return (React.createElement("div", { className: `journy-message-banner journy-message-banner-${position} ${isExiting ? 'journy-message-banner-exiting' : ''} ${isResizing ? 'journy-message-banner-resizing' : ''}`, role: "status", "aria-live": "polite", style: { width: `${size.width}px`, minHeight: `${size.height}px` }, onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave },
-        React.createElement("div", { className: "journy-message-banner-content" },
-            React.createElement(MessageRenderer, { message: message, onClick: (e) => onContentClick(message, e) })),
+    const dragStyle = dragPos
+        ? {
+            left: `${dragPos.left}px`,
+            top: `${dragPos.top}px`,
+            right: 'auto',
+            bottom: 'auto',
+            transform: 'none',
+        }
+        : {};
+    const className = [
+        'journy-message-banner',
+        dragPos ? null : `journy-message-banner-${position}`,
+        isExiting ? 'journy-message-banner-exiting' : null,
+        isPinned ? 'journy-message-banner-pinned' : null,
+    ]
+        .filter(Boolean)
+        .join(' ');
+    return (React.createElement("div", { ref: bannerRef, className: className, role: "status", "aria-live": "polite", style: dragStyle, onMouseEnter: handleMouseEnter, onMouseLeave: handleMouseLeave, onMouseDown: handleDragMouseDown },
+        React.createElement("div", { className: "journy-message-banner-pin", "aria-label": isPinned ? 'Pinned — click banner to unpin' : 'Click banner to pin' },
+            React.createElement(PinIcon, { pinned: isPinned })),
+        React.createElement("div", { className: "journy-message-banner-content", onClick: handleContentClick },
+            React.createElement(MessageRenderer, { message: message })),
         onDismissMessage ? (React.createElement("button", { type: "button", className: "journy-message-banner-close", onClick: (e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 triggerDismiss(message.id);
-            }, title: "Dismiss message", "aria-label": "Dismiss" }, "\u00D7")) : null,
-        React.createElement("div", { className: `journy-message-banner-resize-handle ${resizeCornerClass}`, onMouseDown: handleResizeStart, title: "Resize banner", "aria-label": "Resize banner" })));
+            }, title: "Dismiss message", "aria-label": "Dismiss" }, "\u00D7")) : null));
 };
 
 const SETTINGS_STORAGE_KEY = 'widget_settings';
@@ -2778,8 +2950,9 @@ function useMessageCounts(messages) {
     }, [messages]);
 }
 const MessageWidget = ({ store, onClose, onCloseWidget, onLinkClick, onToggleExpand, onMessageReceived, onDismissMessage, onNextMessage, onPrevMessage, onSettingsChange, configInfo, initialSettings, }) => {
-    const { messages, currentMessage, isCollapsed, displayMode, widgetVisible } = useMessagingStore(store);
-    const { unreadCount } = useMessageCounts(messages);
+    const { messages, currentMessage, currentBanner, isCollapsed, displayMode, widgetVisible, } = useMessagingStore(store);
+    const nonBannerMessages = useMemo(() => messages.filter((m) => !m.isBanner), [messages]);
+    const { unreadCount } = useMessageCounts(nonBannerMessages);
     const [modalMessage, setModalMessage] = useState(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [settings, setSettings] = useState(() => {
@@ -2792,7 +2965,6 @@ const MessageWidget = ({ store, onClose, onCloseWidget, onLinkClick, onToggleExp
             : { ...DEFAULT_WIDGET_SETTINGS, displayMode };
     });
     const isListMode = displayMode === 'list';
-    const isBannerMode = displayMode === 'banner';
     const { position, isDragging, isResizing, widgetRef, justFinishedDragging, currentWidth, currentHeight, handleMouseDown, handleResizeStart, } = useWidgetDragResize({ isCollapsed, isListMode });
     const contentRef = useRef(null);
     const scrollTimerRef = useRef(null);
@@ -2834,34 +3006,33 @@ const MessageWidget = ({ store, onClose, onCloseWidget, onLinkClick, onToggleExp
         const target = e.target;
         if (target.tagName === 'A') {
             handleLinkClick(e);
+            return;
         }
-        else {
-            if (onMessageReceived && !message.received) {
-                onMessageReceived([message.id]);
-            }
-            setModalMessage(message);
+        if (onMessageReceived && !message.received) {
+            onMessageReceived([message.id]);
         }
+        setModalMessage(message);
     };
-    if (!widgetVisible)
-        return null;
-    if (isBannerMode) {
+    const bannerOverlay = currentBanner && !widgetVisible ? (React.createElement(BannerView, { message: currentBanner, position: settings.bannerPosition, autoDismissMs: settings.bannerAutoDismissMs, onMessageReceived: onMessageReceived, onDismissMessage: onDismissMessage, onLinkClick: onLinkClick })) : null;
+    const bannerSettingsHost = isDebugSettings() && !widgetVisible ? (React.createElement("div", { className: "journy-banner-settings-host" },
+        React.createElement("button", { type: "button", className: "journy-banner-settings-trigger", onClick: () => setIsSettingsOpen(true), title: "Open settings", "aria-label": "Open settings" }, "\u2699"),
+        React.createElement(SettingsPanel, { isOpen: isSettingsOpen, onClose: () => setIsSettingsOpen(false), settings: settings, onSettingsChange: handleSettingsChange, configInfo: configInfo }))) : null;
+    if (!widgetVisible) {
         return (React.createElement(React.Fragment, null,
-            currentMessage ? (React.createElement(BannerView, { message: currentMessage, position: settings.bannerPosition, autoDismissMs: settings.bannerAutoDismissMs, onMessageReceived: onMessageReceived, onDismissMessage: onDismissMessage, onContentClick: handleContentClick })) : null,
-            modalMessage ? (React.createElement(MessagePopup, { message: modalMessage, onClose: () => setModalMessage(null), onLinkClick: onLinkClick })) : null,
-            isDebugSettings() ? (React.createElement("div", { className: "journy-banner-settings-host" },
-                React.createElement("button", { type: "button", className: "journy-banner-settings-trigger", onClick: () => setIsSettingsOpen(true), title: "Open settings", "aria-label": "Open settings" }, "\u2699"),
-                React.createElement(SettingsPanel, { isOpen: isSettingsOpen, onClose: () => setIsSettingsOpen(false), settings: settings, onSettingsChange: handleSettingsChange, configInfo: configInfo }))) : null));
+            bannerOverlay,
+            bannerSettingsHost));
     }
     // Get messages for display: widget mode shows all messages for consistent navigation;
     // list mode prioritises unread messages when available.
     // Apply showReadMessages setting: when disabled, filter out read messages in list mode.
-    const unreadMessages = messages.filter(msg => !msg.received);
+    const widgetSourceMessages = nonBannerMessages;
+    const unreadMessages = widgetSourceMessages.filter(msg => !msg.received);
     const filteredMessages = isListMode && !settings.showReadMessages
         ? unreadMessages
-        : messages;
+        : widgetSourceMessages;
     const allMessagesToShow = isListMode
-        ? (unreadMessages.length > 0 && settings.showReadMessages ? filteredMessages : (filteredMessages.length > 0 ? filteredMessages : messages))
-        : messages;
+        ? (unreadMessages.length > 0 && settings.showReadMessages ? filteredMessages : (filteredMessages.length > 0 ? filteredMessages : widgetSourceMessages))
+        : widgetSourceMessages;
     const displayMessage = currentMessage || (!isCollapsed && allMessagesToShow.length > 0 ? allMessagesToShow[0] : null);
     const currentMessageIndex = displayMessage
         ? Math.max(0, allMessagesToShow.findIndex((m) => m.id === displayMessage.id))
@@ -3033,6 +3204,7 @@ class JournyMessaging {
         this.store = new MessagingStore({
             messages: [],
             currentMessage: null,
+            currentBanner: null,
             isCollapsed: savedCollapsed ?? this.config.isCollapsed ?? true,
             widgetVisible: savedVisible ?? true,
             displayMode: this.widgetSettings.displayMode,
@@ -3091,25 +3263,31 @@ class JournyMessaging {
     async loadMessages() {
         try {
             const messages = await this.apiClient.getUnreadMessages();
-            const previousActiveCount = this.messageQueue.getActiveCount();
+            const previousNonBannerCount = this.messageQueue.getUnreadNonBannerCount();
             this.messageQueue.addMessages(messages);
-            const newActiveCount = this.messageQueue.getActiveCount();
+            const newNonBannerCount = this.messageQueue.getUnreadNonBannerCount();
+            const newNonBannerArrived = newNonBannerCount > previousNonBannerCount;
             let updates = {
                 messages: this.messageQueue.getAllMessages(),
             };
-            if (newActiveCount > previousActiveCount) {
+            if (newNonBannerArrived) {
                 updates.widgetVisible = true;
                 if (this.widgetSettings.autoExpandOnNew) {
                     updates.isCollapsed = false;
                 }
+                // A new non-banner takes priority: hide any visible banner without
+                // marking it read so it returns to the queue.
+                if (this.uiState.currentBanner) {
+                    updates.currentBanner = null;
+                }
             }
             this.store.setState(updates);
-            if (newActiveCount > 0) {
+            if (this.messageQueue.getActiveCount() > 0) {
                 this.ensureUIInitialized();
             }
-            if (!this.uiState.currentMessage && newActiveCount > 0) {
+            if (!this.uiState.currentMessage && newNonBannerCount > 0) {
                 const savedMessageId = getItem(STORAGE_KEYS.CURRENT_MESSAGE_ID);
-                const allMessages = this.messageQueue.getAllMessages();
+                const allMessages = this.messageQueue.getNonBannerMessages();
                 const savedMessage = savedMessageId ? allMessages.find(m => m.id === savedMessageId) : null;
                 if (savedMessage) {
                     this.store.setState({ currentMessage: savedMessage });
@@ -3122,10 +3300,29 @@ class JournyMessaging {
             if (!this.uiState.isCollapsed && this.uiState.currentMessage && !this.uiState.currentMessage.received) {
                 this.handleMessageReceived([this.uiState.currentMessage.id]);
             }
+            this.maybeShowBanner();
         }
         catch (error) {
             console.error('Failed to load messages:', error);
         }
+    }
+    /**
+     * Banners surface whenever the widget is closed. Unread non-banner messages
+     * don't block a banner — the user has dismissed the widget, so the banner is
+     * the only remaining surface for new notifications. They sit in their own
+     * slot on the store; pin / dismiss / drag state lives in the BannerView
+     * component.
+     */
+    maybeShowBanner() {
+        if (this.uiState.currentBanner)
+            return;
+        if (this.uiState.widgetVisible)
+            return;
+        const nextBanner = this.messageQueue.getNextBanner();
+        if (!nextBanner)
+            return;
+        this.store.setState({ currentBanner: nextBanner });
+        this.ensureUIInitialized();
     }
     startPolling() {
         if (this.pollingInterval !== null) {
@@ -3228,17 +3425,43 @@ class JournyMessaging {
             this.store.setState({ currentMessage: null, isCollapsed: false });
             setTimeout(() => {
                 this.displayNextMessage();
+                this.maybeShowBanner();
             }, MESSAGE_CLOSE_DELAY);
         }
     }
     handleCloseWidget() {
         this.store.setState({ widgetVisible: false });
+        this.maybeShowBanner();
     }
     async handleDismissMessage(messageId) {
         this.eventTracker.track(SDKEventType.MessageClosed, { messageId });
+        const wasBanner = this.uiState.currentBanner?.id === messageId;
         await this.markAsRead([messageId]);
         if (this.uiState.currentMessage?.id === messageId) {
             this.store.setState({ currentMessage: null });
+            this.displayNextMessage();
+        }
+        if (wasBanner) {
+            this.store.setState({ currentBanner: null });
+            // Once the banner finishes (auto-dismiss timer or user close), unread
+            // non-banner messages take precedence over the next banner — re-surface
+            // the widget instead of cycling to another banner.
+            if (this.messageQueue.getUnreadNonBannerCount() > 0) {
+                this.reopenWidgetForUnread();
+            }
+            else {
+                this.maybeShowBanner();
+            }
+        }
+    }
+    reopenWidgetForUnread() {
+        const updates = { widgetVisible: true };
+        if (this.widgetSettings.autoExpandOnNew) {
+            updates.isCollapsed = false;
+        }
+        this.store.setState(updates);
+        this.ensureUIInitialized();
+        if (!this.uiState.currentMessage) {
             this.displayNextMessage();
         }
     }

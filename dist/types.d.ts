@@ -6,7 +6,7 @@ export declare enum SDKEventType {
 }
 export type MessageStatus = 'pending' | 'sent' | 'read' | 'expired';
 export type MessageScope = 'account' | 'user';
-export type AppDisplayMode = 'widget' | 'list' | 'banner';
+export type AppDisplayMode = 'widget' | 'list';
 export type RenderTarget = 'self' | 'parent' | 'top';
 export type BannerPosition = 'top-left' | 'top-center' | 'top-right' | 'bottom-left' | 'bottom-center' | 'bottom-right';
 export interface Message {
@@ -17,6 +17,7 @@ export interface Message {
     status: MessageStatus;
     scope: MessageScope;
     message: string;
+    isBanner?: boolean;
     received: boolean;
     expired: boolean;
     createdAt: string;

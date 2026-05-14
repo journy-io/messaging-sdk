@@ -392,19 +392,22 @@ When using default styles, you can still customize by overriding these CSS class
 
 Banner mode renders outside the regular widget shell and exposes its own class set:
 
-- `.journy-message-banner` - The banner container (navy strip, `position: fixed`)
-- `.journy-message-banner-content` - Wraps the sanitized message HTML and timestamp
-- `.journy-message-banner-close` - The dismiss (×) button on the right edge
-- `.journy-message-banner-resize-handle` - Drag handle for resizing (combined
-  with a corner modifier: `--top-left`, `--top-right`, `--bottom-left`,
-  `--bottom-right`)
+- `.journy-message-banner` - The banner container (navy panel, `position: fixed`,
+  `cursor: grab` for the drag-to-reposition interaction)
+- `.journy-message-banner-pin` - The pin indicator (📍/📌) in the top-left
+  corner; non-interactive
+- `.journy-message-banner-content` - Scrollable wrapper around the sanitized
+  message HTML and timestamp (`overflow-y: auto`, `max-height: calc(50vh - 52px)`)
+- `.journy-message-banner-close` - The dismiss (×) button in the top-right corner
 - `.journy-message-banner-exiting` - Applied during the 200 ms fade-out
   transition before the banner unmounts
-- `.journy-message-banner-resizing` - Applied while the user is dragging
-  the resize handle
+- `.journy-message-banner-pinned` - Applied while the banner is pinned open
+  (click-to-toggle); draws a 2 px blue outline ring and suspends the
+  auto-dismiss timer
 
 **Position modifiers** — one of these is applied alongside `.journy-message-banner`
-based on `bannerPosition`:
+based on `bannerPosition` (dropped once the user drags the banner, at which
+point absolute `left`/`top` are written via inline styles):
 
 - `.journy-message-banner-top-left`
 - `.journy-message-banner-top-center`
@@ -417,9 +420,18 @@ based on `bannerPosition`:
 six positions so the static `translateX(-50%)` on centered variants is preserved.
 Override or disable via the `animation` property on `.journy-message-banner`.
 
-**Mobile** — at `max-width: 640px` the banner stretches full-width minus 16 px
-gutters and the centered variants drop their `translateX`. Override in a more
-specific media query if you need different mobile behavior.
+**Scrollbar** — `.journy-message-banner-content` ships a thin dark-surface
+scrollbar (tinted with `--journy-on-header-btn-hover`/`--journy-on-header-btn`
+on a transparent track) so long-form HTML messages stay legible on the navy
+background. The light-surface counterpart on `.journy-message-widget-content`
+in list/widget modes uses the same shape recoloured for white backgrounds
+(`--journy-border-strong` / `--journy-text-muted`). Override either via
+`::-webkit-scrollbar-thumb` and `scrollbar-color`.
+
+**Sizing** — the banner is shrink-to-fit up to `max-width: 80vw` with
+`box-sizing: border-box`, so the rendered width (including padding) is capped
+at 80 % of the viewport at every breakpoint. Override that ceiling on
+`.journy-message-banner` if you want a different cap.
 
 Example — re-skin the banner to a brand red:
 
@@ -436,6 +448,10 @@ Example — re-skin the banner to a brand red:
 
 .journy-message-banner-close {
   color: rgba(255, 255, 255, 0.85);
+}
+
+.journy-message-banner-content::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.35);
 }
 ```
 
