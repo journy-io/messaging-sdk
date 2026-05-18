@@ -3335,17 +3335,20 @@ class JournyMessaging {
     applyStyles(stylesConfig) {
         const doc = this.renderCtx.targetDocument;
         removeInjectedStyles(doc);
-        if (stylesConfig === 'none') ;
-        else if (stylesConfig && stylesConfig !== 'default') {
+        if (stylesConfig === 'none') {
+            // Host provides all styles; do not inject anything
+            return;
+        }
+        // Always inject the default styles first so a custom `css`/`url` layers on
+        // top of them (later rules win the cascade) instead of replacing them.
+        injectStyleTag(defaultStyles, DEFAULT_STYLE_ID, doc);
+        if (stylesConfig && stylesConfig !== 'default') {
             if ('url' in stylesConfig && stylesConfig.url) {
                 injectStyleLink(stylesConfig.url, doc);
             }
             else if ('css' in stylesConfig && stylesConfig.css) {
                 injectStyleTag(stylesConfig.css, undefined, doc);
             }
-        }
-        else {
-            injectStyleTag(defaultStyles, DEFAULT_STYLE_ID, doc);
         }
     }
     initializeUI() {

@@ -351,8 +351,8 @@ You can control styling via the `styles` config option:
 
 - **`styles: 'default'` or omitted** – The SDK injects the default styles inline. No separate CSS file needed.
 - **`styles: 'none'`** – No SDK styles are injected. You provide all CSS (e.g. target `.journy-message-widget`, `.journy-message-popup`, etc.) in your own stylesheet.
-- **`styles: { url: 'https://...' }`** – The SDK injects a `<link rel="stylesheet" href="...">` pointing to your stylesheet.
-- **`styles: { css: '.journy-message-widget { ... }' }`** – The SDK injects a `<style>` tag with the given CSS.
+- **`styles: { url: 'https://...' }`** – The SDK injects the default styles, then a `<link rel="stylesheet" href="...">` pointing to your stylesheet on top of them, so your stylesheet overrides only what it declares.
+- **`styles: { css: '.journy-message-widget { ... }' }`** – The SDK injects the default styles, then a `<style>` tag with the given CSS on top of them. Your CSS layers over the defaults (later rules win the cascade) instead of replacing them.
 
 Example with custom stylesheet URL:
 
