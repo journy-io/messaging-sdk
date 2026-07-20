@@ -64,13 +64,25 @@ class MessageQueue {
     }
     /** Mark a message as received (user clicked/viewed it) without removing from queue */
     markMessageAsReceived(messageIds) {
-        const updateReceived = (m) => messageIds.includes(m.id) ? { ...m, received: true } : m;
+        this.setReceived(messageIds, true);
+    }
+    /**
+     * Undo an optimistic receipt the server never accepted. Without this the message
+     * reads as received locally while still being unread server-side, so it silently
+     * comes back on the next reload.
+     */
+    markMessagesAsUnreceived(messageIds) {
+        this.setReceived(messageIds, false);
+        messageIds.forEach((id) => this.readMessageIds.delete(id));
+    }
+    setReceived(messageIds, received) {
+        const updateReceived = (m) => messageIds.includes(m.id) ? { ...m, received } : m;
         this.queue = this.queue.map(updateReceived);
         this.allFetchedMessages = this.allFetchedMessages.map(updateReceived);
-        // Keep messageMap in sync so subsequent addMessages calls see received=true
+        // Keep messageMap in sync so subsequent addMessages calls see the new value
         for (const id of messageIds) {
             if (this.messageMap[id]) {
-                this.messageMap[id] = { ...this.messageMap[id], received: true };
+                this.messageMap[id] = { ...this.messageMap[id], received };
             }
         }
     }
@@ -136,6 +148,28 @@ class MessageQueue {
 
 const DEFAULT_API_ENDPOINT = 'https://analyze.journy.io';
 const DEFAULT_POLLING_INTERVAL = 30000;
+/**
+ * Poll pacing. Every tab draws from a budget shared across the whole write key,
+ * so the client has to be a good citizen rather than assume it is alone.
+ */
+/** Random spread applied to every scheduled poll, as a fraction of the interval. */
+const POLLING_JITTER_RATIO = 0.2;
+/** Backoff ceiling. Long enough to relieve the server, short enough that a tab recovers on its own. */
+const MAX_BACKOFF_INTERVAL = 300000;
+/** Each consecutive failure multiplies the wait by this. */
+const BACKOFF_MULTIPLIER = 2;
+/**
+ * Receipts. The API accepts up to 100 ids per call, so a reader scrolling an
+ * inbox should cost one request, not one per message.
+ */
+/** How long to collect ids before sending them as one batch. */
+const RECEIPT_BATCH_WINDOW = 1000;
+/** Server-enforced ceiling on `messageIds` per request. */
+const RECEIPT_MAX_BATCH_SIZE = 100;
+/** Attempts per batch before the ids are dropped and reported. */
+const RECEIPT_MAX_ATTEMPTS = 4;
+/** First retry wait after a failed batch; doubles per attempt. */
+const RECEIPT_RETRY_BASE_DELAY = 2000;
 const ROOT_ELEMENT_ID = 'journy-messages-root';
 const DEFAULT_STYLE_ID = 'journy-messages-default';
 const REACT_CHECK_INTERVAL = 100;
@@ -163,6 +197,39 @@ const STORAGE_KEYS = {
 const API_PATHS = {
     IN_APP_MESSAGES: '/sdk/in-app-messages',
 };
+const HTTP_TOO_MANY_REQUESTS = 429;
+function parseRetryAfter(response) {
+    const header = response.headers?.get?.('Retry-After');
+    if (!header)
+        return undefined;
+    // Retry-After is either delta-seconds or an HTTP-date (RFC 9110). Our own
+    // server sends seconds, but an intermediary may rewrite it to a date; falling
+    // back to exponential backoff there would retry sooner than asked.
+    const seconds = Number(header);
+    if (Number.isFinite(seconds)) {
+        return seconds >= 0 ? seconds : undefined;
+    }
+    const dateMs = Date.parse(header);
+    if (Number.isNaN(dateMs))
+        return undefined;
+    const deltaSeconds = Math.ceil((dateMs - Date.now()) / 1000);
+    return deltaSeconds >= 0 ? deltaSeconds : undefined;
+}
+function toError(response) {
+    if (response.status === HTTP_TOO_MANY_REQUESTS) {
+        return {
+            kind: 'rate-limited',
+            message: 'Rate limit exceeded',
+            status: response.status,
+            retryAfterSeconds: parseRetryAfter(response),
+        };
+    }
+    return {
+        kind: 'http',
+        message: `HTTP error! status: ${response.status}`,
+        status: response.status,
+    };
+}
 class ApiClient {
     constructor(config) {
         this.config = config;
@@ -189,28 +256,38 @@ class ApiClient {
         return new URL(targetPath, baseUrl).toString();
     }
     async getUnreadMessages() {
+        let response;
         try {
-            const url = this.buildUrl('/unread');
-            const response = await fetch(url, {
+            response = await fetch(this.buildUrl('/unread'), {
                 method: 'GET',
                 headers: this.getHeaders(),
                 mode: 'cors', // Explicitly set CORS mode
             });
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const data = await response.json();
-            return data.data || [];
         }
         catch (error) {
-            console.error('Failed to fetch unread messages:', error);
-            return [];
+            return {
+                ok: false,
+                error: { kind: 'network', message: String(error) },
+            };
+        }
+        if (!response.ok) {
+            return { ok: false, error: toError(response) };
+        }
+        try {
+            const body = await response.json();
+            return { ok: true, data: body.data || [] };
+        }
+        catch (error) {
+            return {
+                ok: false,
+                error: { kind: 'network', message: `Malformed response: ${String(error)}` },
+            };
         }
     }
     async markAsRead(messageIds) {
+        let response;
         try {
-            const url = this.buildUrl('/received');
-            const response = await fetch(url, {
+            response = await fetch(this.buildUrl('/received'), {
                 method: 'POST',
                 headers: this.getHeaders(),
                 mode: 'cors',
@@ -218,16 +295,35 @@ class ApiClient {
                     messageIds: messageIds,
                 }),
             });
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const data = await response.json();
-            if (data.data && data.data.markedCount !== messageIds.length) {
-                throw new Error(`Failed to mark all messages as read. Expected ${messageIds.length} messages, got ${data.data.markedCount}`);
-            }
         }
         catch (error) {
-            console.error('Failed to mark message as read:', error);
+            return {
+                ok: false,
+                error: { kind: 'network', message: String(error) },
+            };
+        }
+        if (!response.ok) {
+            return { ok: false, error: toError(response) };
+        }
+        try {
+            const body = await response.json();
+            if (body.data && body.data.markedCount !== messageIds.length) {
+                return {
+                    ok: false,
+                    error: {
+                        kind: 'http',
+                        message: `Failed to mark all messages as read. Expected ${messageIds.length} messages, got ${body.data.markedCount}`,
+                        status: response.status,
+                    },
+                };
+            }
+            return { ok: true, data: undefined };
+        }
+        catch (error) {
+            return {
+                ok: false,
+                error: { kind: 'network', message: `Malformed response: ${String(error)}` },
+            };
         }
     }
 }
@@ -373,6 +469,119 @@ class MessagingStore {
     }
     destroy() {
         this.listeners.clear();
+    }
+}
+
+/**
+ * Collects read receipts and delivers them as batches.
+ *
+ * Two problems this exists to solve. The API takes up to 100 ids per call but the
+ * UI acknowledges one message at a time, so reading an inbox used to cost one
+ * request per message. And a receipt that failed in flight was simply lost — the
+ * message stayed unread on the server and came back on the next reload, forever.
+ *
+ * Ids stay queued until the server confirms them, so a rate-limited receipt is
+ * retried rather than dropped.
+ */
+class ReceiptQueue {
+    constructor(options) {
+        this.options = options;
+        this.pending = new Set();
+        this.inFlight = false;
+        this.attempts = 0;
+        this.timer = null;
+        this.destroyed = false;
+        this.batchWindow = options.batchWindow ?? RECEIPT_BATCH_WINDOW;
+    }
+    add(messageIds) {
+        for (const id of messageIds) {
+            this.pending.add(id);
+        }
+        // A full batch cannot grow any further, so there is nothing to wait for.
+        if (this.pending.size >= RECEIPT_MAX_BATCH_SIZE) {
+            void this.flush();
+            return;
+        }
+        this.schedule(this.batchWindow);
+    }
+    /** Sends whatever is queued right now, without waiting for the batch window. */
+    async flush() {
+        this.clearTimer();
+        if (this.inFlight || this.pending.size === 0)
+            return;
+        const batch = Array.from(this.pending).slice(0, RECEIPT_MAX_BATCH_SIZE);
+        this.inFlight = true;
+        let result;
+        try {
+            result = await this.options.send(batch);
+        }
+        finally {
+            this.inFlight = false;
+        }
+        // Torn down mid-flight: the batch was still sent (best effort), but we must
+        // not schedule retries or fire onDropped after the owner is gone. A fresh
+        // instance re-fetches the unread set and re-acks anything the server kept.
+        if (this.destroyed)
+            return;
+        if (result.ok) {
+            this.attempts = 0;
+            for (const id of batch) {
+                this.pending.delete(id);
+            }
+            // More than one batch worth was queued; keep going immediately.
+            if (this.pending.size > 0) {
+                this.schedule(0);
+            }
+            return;
+        }
+        this.attempts++;
+        if (this.attempts >= RECEIPT_MAX_ATTEMPTS) {
+            // Give up rather than retry forever, but say so — silently dropping a receipt
+            // is what leaves a message unread on the server with nobody any the wiser.
+            for (const id of batch) {
+                this.pending.delete(id);
+            }
+            this.attempts = 0;
+            this.options.onDropped?.(batch, result.error);
+            // Only this batch is abandoned; any ids beyond the first 100 are a fresh
+            // batch that hasn't failed, so keep draining them.
+            if (this.pending.size > 0) {
+                this.schedule(0);
+            }
+            return;
+        }
+        this.schedule(this.getRetryDelay(result.error));
+    }
+    destroy() {
+        this.destroyed = true;
+        this.clearTimer();
+        this.pending.clear();
+    }
+    /** Exposed for assertions; the queue owns its own retry scheduling. */
+    getPendingCount() {
+        return this.pending.size;
+    }
+    getRetryDelay(error) {
+        if (error.kind === 'rate-limited' && error.retryAfterSeconds !== undefined) {
+            return error.retryAfterSeconds * 1000;
+        }
+        return RECEIPT_RETRY_BASE_DELAY * Math.pow(2, this.attempts - 1);
+    }
+    schedule(delay) {
+        if (this.destroyed)
+            return;
+        if (this.timer !== null)
+            return;
+        this.timer = setTimeout(() => {
+            this.timer = null;
+            void this.flush();
+        }, delay);
+    }
+    clearTimer() {
+        if (this.timer !== null) {
+            clearTimeout(this.timer);
+            this.timer = null;
+        }
     }
 }
 
@@ -3147,14 +3356,29 @@ class UIRenderer {
     }
 }
 
+/**
+ * One live instance per identity. React StrictMode double-mounts, and hosts do
+ * construct without destroying the previous instance — either way the old copy
+ * keeps its own poller running, doubling the request rate against a budget that
+ * is already shared across every tab on the write key.
+ */
+const liveInstances = new Map();
+function getInstanceKey(config) {
+    const entityId = config.entityType === 'user' ? config.userId : config.accountId;
+    return `${config.writeKey}:${config.entityType}:${entityId ?? ''}`;
+}
 class JournyMessaging {
     constructor(config) {
         this.initialized = false;
         this.uiInitialized = false;
-        this.pollingInterval = null;
+        this.pollTimer = null;
         this.rootElementId = ROOT_ELEMENT_ID;
         this.unsubscribePersistence = null;
         this.beforeUnloadHandler = null;
+        this.consecutiveFailures = 0;
+        this.retryAfterMs = null;
+        this.destroyed = false;
+        this.visibilityHandler = null;
         this.config = {
             apiEndpoint: DEFAULT_API_ENDPOINT,
             pollingInterval: DEFAULT_POLLING_INTERVAL,
@@ -3167,6 +3391,11 @@ class JournyMessaging {
         if (!this.config.entityType) {
             throw new Error('entityType is required');
         }
+        this.instanceKey = getInstanceKey(this.config);
+        // Last one wins: superseding the previous instance is safe because this one is
+        // about to render the same widget, whereas leaving it alive means two pollers.
+        liveInstances.get(this.instanceKey)?.destroy();
+        liveInstances.set(this.instanceKey, this);
         this.renderCtx = resolveRenderContext(config.renderTarget);
         // Clean up parent DOM when iframe unloads
         if (this.renderCtx.isRemote) {
@@ -3178,6 +3407,16 @@ class JournyMessaging {
         this.analyticsClient = new AnalyticsClient(this.config);
         this.eventTracker = new EventTracker(this.analyticsClient);
         this.uiRenderer = new UIRenderer(this.renderCtx);
+        this.receiptQueue = new ReceiptQueue({
+            send: (messageIds) => this.apiClient.markAsRead(messageIds),
+            onDropped: (messageIds, error) => {
+                // The optimistic UI mark cannot be trusted now — the server still has these
+                // unread, so they will reappear on reload. Say so rather than let it look fine.
+                this.messageQueue.markMessagesAsUnreceived(messageIds);
+                this.store.setState({ messages: this.messageQueue.getAllMessages() });
+                this.handleError(error);
+            },
+        });
         // Build default settings from config, then overlay any saved settings.
         // Explicit config values (provided by the host) always take precedence over
         // saved localStorage settings so that changing config.js is never silently
@@ -3228,6 +3467,9 @@ class JournyMessaging {
     async init() {
         if (this.initialized)
             return;
+        // Set before the first await: React StrictMode double-mounts, and two instances
+        // racing through here would each start their own poller.
+        this.initialized = true;
         if (!this.shouldHideUntilMessages()) {
             this.ensureUIInitialized();
         }
@@ -3235,11 +3477,11 @@ class JournyMessaging {
         if (isDebugMockMessages() && this.messageQueue.getActiveCount() === 0) {
             this.injectDebugMessages();
         }
-        this.startPolling();
+        this.listenForVisibility();
+        this.scheduleNextPoll();
         if (this.messageQueue.getActiveCount() > 0) {
             this.ensureUIInitialized();
         }
-        this.initialized = true;
     }
     shouldHideUntilMessages() {
         return this.config.hideUntilMessages !== false;
@@ -3262,7 +3504,22 @@ class JournyMessaging {
     }
     async loadMessages() {
         try {
-            const messages = await this.apiClient.getUnreadMessages();
+            const result = await this.apiClient.getUnreadMessages();
+            if (!result.ok) {
+                // Deliberately not treated as "no messages": leaving the queue untouched
+                // keeps whatever is already on screen instead of blanking the widget.
+                this.consecutiveFailures++;
+                this.retryAfterMs =
+                    result.error.kind === 'rate-limited' &&
+                        result.error.retryAfterSeconds !== undefined
+                        ? result.error.retryAfterSeconds * 1000
+                        : null;
+                this.handleError(result.error);
+                return;
+            }
+            this.consecutiveFailures = 0;
+            this.retryAfterMs = null;
+            const messages = result.data;
             const previousNonBannerCount = this.messageQueue.getUnreadNonBannerCount();
             this.messageQueue.addMessages(messages);
             const newNonBannerCount = this.messageQueue.getUnreadNonBannerCount();
@@ -3324,13 +3581,68 @@ class JournyMessaging {
         this.store.setState({ currentBanner: nextBanner });
         this.ensureUIInitialized();
     }
-    startPolling() {
-        if (this.pollingInterval !== null) {
-            clearInterval(this.pollingInterval);
+    getBaseInterval() {
+        return this.config.pollingInterval || DEFAULT_POLLING_INTERVAL;
+    }
+    /**
+     * Backs off while the server is rejecting us, and spreads every poll out so a
+     * wave of tabs opened at the same moment (a deploy, a morning login rush) does
+     * not arrive on the same second.
+     */
+    getNextPollDelay() {
+        const base = this.getBaseInterval();
+        const backoff = Math.min(base * Math.pow(BACKOFF_MULTIPLIER, this.consecutiveFailures), MAX_BACKOFF_INTERVAL);
+        // Never poll sooner than a 429's Retry-After asked, even when plain backoff
+        // would fire earlier.
+        const wait = Math.max(backoff, this.retryAfterMs ?? 0);
+        const jitter = wait * POLLING_JITTER_RATIO * Math.random();
+        return wait + jitter;
+    }
+    /**
+     * Self-scheduling rather than setInterval: a fixed-rate timer keeps firing while
+     * a request is still in flight, so a slow or rate-limited server just gets more
+     * traffic. Each poll now schedules the next one only once it has finished.
+     */
+    scheduleNextPoll(delay = this.getNextPollDelay()) {
+        this.clearPollTimer();
+        if (this.destroyed)
+            return;
+        this.pollTimer = setTimeout(async () => {
+            this.pollTimer = null;
+            if (this.isDocumentHidden()) {
+                // A background tab has nobody to show a message to; wait rather than spend
+                // a slot from the budget shared with every other tab on this write key.
+                this.scheduleNextPoll();
+                return;
+            }
+            await this.loadMessages();
+            this.scheduleNextPoll();
+        }, delay);
+    }
+    isDocumentHidden() {
+        return this.renderCtx.targetDocument?.visibilityState === 'hidden';
+    }
+    clearPollTimer() {
+        if (this.pollTimer !== null) {
+            clearTimeout(this.pollTimer);
+            this.pollTimer = null;
         }
-        this.pollingInterval = window.setInterval(() => {
-            this.loadMessages();
-        }, this.config.pollingInterval || DEFAULT_POLLING_INTERVAL);
+    }
+    /** Polls straight away when the tab comes back, so a returning user isn't stale. */
+    listenForVisibility() {
+        const doc = this.renderCtx.targetDocument;
+        if (!doc?.addEventListener)
+            return;
+        this.visibilityHandler = () => {
+            if (doc.visibilityState === 'visible' && !this.destroyed) {
+                this.scheduleNextPoll(0);
+            }
+        };
+        doc.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+    handleError(error) {
+        this.config.onError?.(error);
+        console.error('Journy messaging request failed:', error.message);
     }
     applyStyles(stylesConfig) {
         const doc = this.renderCtx.targetDocument;
@@ -3383,7 +3695,8 @@ class JournyMessaging {
         this.config.pollingInterval = newSettings.pollingInterval;
         this.config.apiEndpoint = newSettings.apiEndpoint;
         if (newSettings.pollingInterval !== prev.pollingInterval) {
-            this.startPolling();
+            // Re-arm on the new interval rather than waiting out the old one.
+            this.scheduleNextPoll();
         }
         if (newSettings.displayMode !== prev.displayMode) {
             this.store.setState({ displayMode: newSettings.displayMode });
@@ -3519,7 +3832,11 @@ class JournyMessaging {
             updates.currentMessage = { ...currentMessage, received: true };
         }
         this.store.setState(updates);
-        await this.apiClient.markAsRead(ids);
+        // Queued rather than sent: the UI mark above is optimistic, but delivery is only
+        // done once the server confirms. The queue batches ids into one call and keeps
+        // retrying, so a receipt lost to a 429 no longer leaves the message unread
+        // server-side for good.
+        this.receiptQueue.add(ids);
         await this.analyticsClient.sendAnalyticsEvents(ids);
     }
     /** Track a link click event for analytics. Called by host apps when a user clicks a link inside a message. */
@@ -3542,9 +3859,18 @@ class JournyMessaging {
         });
     }
     destroy() {
-        if (this.pollingInterval !== null) {
-            clearInterval(this.pollingInterval);
-            this.pollingInterval = null;
+        this.destroyed = true;
+        this.clearPollTimer();
+        // Last chance to deliver what the user already read; anything still unsent is
+        // retried by whichever instance replaces this one, after the server returns it.
+        void this.receiptQueue.flush();
+        this.receiptQueue.destroy();
+        if (this.visibilityHandler) {
+            this.renderCtx.targetDocument?.removeEventListener?.('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
+        }
+        if (liveInstances.get(this.instanceKey) === this) {
+            liveInstances.delete(this.instanceKey);
         }
         if (this.unsubscribePersistence) {
             this.unsubscribePersistence();

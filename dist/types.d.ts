@@ -47,4 +47,25 @@ export interface ApiResponse<T> {
     success: boolean;
     error?: string;
 }
+export type SDKErrorKind = 'rate-limited' | 'http' | 'network';
+export interface SDKError {
+    kind: SDKErrorKind;
+    message: string;
+    /** Absent for network failures, which never reached the server. */
+    status?: number;
+    /** Seconds the server asked us to wait. Only ever set for 'rate-limited'. */
+    retryAfterSeconds?: number;
+}
+/**
+ * Callers need to tell "no messages" apart from "the request failed". Returning
+ * an empty list for both is what makes a rate-limited widget look like an empty
+ * inbox, so every request reports which of the two happened.
+ */
+export type ApiResult<T> = {
+    ok: true;
+    data: T;
+} | {
+    ok: false;
+    error: SDKError;
+};
 //# sourceMappingURL=types.d.ts.map
